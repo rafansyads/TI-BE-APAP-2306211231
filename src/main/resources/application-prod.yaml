@@ -1,0 +1,7 @@
+spring:
+  config:
+    import: optional:file:.env[.properties]
+  datasource:
+    url: ${DATABASE_URL_PROD}
+    username: ${PROD_USERNAME}
+    password: ${PROD_PASSWORD}
