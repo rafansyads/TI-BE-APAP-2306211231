@@ -17,13 +17,17 @@ public class AccommodationBookingRestService {
 
     private final AccommodationBookingRepository bookingRepository;
 
+    public long count() {
+        return bookingRepository.count();
+    }
+
     // Placeholders to be implemented later (entity-based)
     public List<AccommodationBooking> getAllBookings() {
-        throw new UnsupportedOperationException("Not implemented yet");
+        return bookingRepository.findAll();
     }
 
     public Optional<AccommodationBooking> getBookingById(String bookingId) {
-        throw new UnsupportedOperationException("Not implemented yet");
+        return bookingRepository.findById(bookingId);
     }
 
     public AccommodationBooking createBooking(AccommodationBooking booking) {

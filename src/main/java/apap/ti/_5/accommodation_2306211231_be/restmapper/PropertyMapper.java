@@ -12,6 +12,7 @@ import apap.ti._5.accommodation_2306211231_be.restdto.response.room.roomtype.Roo
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import apap.ti._5.accommodation_2306211231_be.util.ProvinceUtil;
 
 public final class PropertyMapper {
     private PropertyMapper() {}
@@ -23,52 +24,54 @@ public final class PropertyMapper {
                 p.getPropertyName(),
                 p.getType(),
                 p.getProvince(),
-                p.getActiveStatus()
+                ProvinceUtil.getNameByCode(p.getProvince()).orElse(null),
+                p.getActiveStatus(),
+                p.getTotalRoom()
         );
     }
 
     public static PropertyDetailDto toDetailDto(Property p) {
-    if (p == null) return null;
-    List<RoomTypeSummaryDto> roomTypes = null;
-    List<RoomSummaryDto> rooms = null;
-    if (p.getListRoomType() != null) {
-        roomTypes = p.getListRoomType().stream()
-            .map(PropertyMapper::toRoomTypeSummary)
-            .collect(Collectors.toList());
-        rooms = p.getListRoomType().stream()
-            .filter(rt -> rt.getListRoom() != null)
-            .flatMap(rt -> rt.getListRoom().stream())
-            .map(r -> new RoomSummaryDto(
-                r.getRoomId(),
-                r.getName(),
-                r.getAvailabilityStatus(),
-                r.getActiveRoom(),
-                r.getRoomType() != null ? r.getRoomType().getRoomTypeId() : null
-            ))
-            .collect(Collectors.toList());
-    }
+        if (p == null) return null;
+        List<RoomTypeSummaryDto> roomTypes = null;
+        List<RoomSummaryDto> rooms = null;
+        if (p.getListRoomType() != null) {
+            roomTypes = p.getListRoomType().stream()
+                .map(PropertyMapper::toRoomTypeSummary)
+                .collect(Collectors.toList());
+            rooms = p.getListRoomType().stream()
+                .filter(rt -> rt.getListRoom() != null)
+                .flatMap(rt -> rt.getListRoom().stream())
+                .map(r -> new RoomSummaryDto(
+                    r.getRoomId(),
+                    r.getName(),
+                    r.getAvailabilityStatus(),
+                    r.getActiveRoom(),
+                    r.getRoomType() != null ? r.getRoomType().getRoomTypeId() : null
+                ))
+                .collect(Collectors.toList());
+        }
 
-    var dto = new PropertyDetailDto();
-    dto.setPropertyId(p.getPropertyId());
-    dto.setPropertyName(p.getPropertyName());
-    dto.setType(p.getType());
-    dto.setAddress(p.getAddress());
-    dto.setProvince(p.getProvince());
-    dto.setDescription(p.getDescription());
-    dto.setTotalRoom(p.getTotalRoom());
-    dto.setActiveStatus(p.getActiveStatus());
-    dto.setOwnerName(p.getOwnerName());
-    dto.setOwnerId(p.getOwnerId() != null ? p.getOwnerId().toString() : null);
+        var dto = new PropertyDetailDto();
+        dto.setPropertyId(p.getPropertyId());
+        dto.setPropertyName(p.getPropertyName());
+        dto.setType(p.getType());
+        dto.setAddress(p.getAddress());
+        dto.setProvince(p.getProvince());
+        dto.setProvinceName(ProvinceUtil.getNameByCode(p.getProvince()).orElse(null));
+        dto.setDescription(p.getDescription());
+        dto.setTotalRoom(p.getTotalRoom());
+        dto.setActiveStatus(p.getActiveStatus());
+        dto.setOwnerName(p.getOwnerName());
+        dto.setOwnerId(p.getOwnerId() != null ? p.getOwnerId().toString() : null);
         dto.setRoomTypes(roomTypes);
         dto.setRooms(rooms);
         dto.setDeletedAt(p.getDeletedAt());
-    return dto;
+        return dto;
     }
 
     public static Property fromCreateRequest(PropertyCreateRequest req) {
         if (req == null) return null;
         return Property.builder()
-                .propertyId(req.getPropertyId())
                 .propertyName(req.getPropertyName())
                 .type(req.getType())
                 .address(req.getAddress())

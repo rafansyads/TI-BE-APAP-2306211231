@@ -16,6 +16,7 @@ public class PropertyDetailDto {
     private Integer type;
     private String address;
     private Integer province;
+    private String provinceName; // derived from province code
     private String description;
     private Integer totalRoom;
     private Integer activeStatus;

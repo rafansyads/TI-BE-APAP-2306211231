@@ -9,7 +9,6 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class PropertyCreateRequest {
-    @NotBlank private String propertyId; // Provided by caller per spec
     @NotBlank private String propertyName;
     @NotNull @Min(1) private Integer type;
     @NotBlank private String address;
@@ -18,5 +17,5 @@ public class PropertyCreateRequest {
     @NotNull @Min(0) private Integer totalRoom;
     @NotNull @Min(0) @Max(1) private Integer activeStatus;
     @NotBlank private String ownerName;
-    @NotBlank private String ownerId; // UUID as string
+    @NotBlank private String ownerId;
 }

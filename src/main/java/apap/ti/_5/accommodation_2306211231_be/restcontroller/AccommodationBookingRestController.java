@@ -11,6 +11,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.*;
+
 @RestController
 @RequestMapping("/bookings")
 @RequiredArgsConstructor
@@ -20,7 +22,8 @@ public class AccommodationBookingRestController {
 
     // Stubs only – service methods will be implemented later
     @GetMapping
-    public ResponseEntity<BaseResponseDto<java.util.List<AccommodationBookingDto>>> listBookings() {
+    public ResponseEntity<BaseResponseDto<List<AccommodationBookingDto>>> listBookings() {
+        // List<AccommodationBookingDto> bookings = bookingService.getAllBookingsDto();
         throw new UnsupportedOperationException("Not implemented yet");
     }
 
