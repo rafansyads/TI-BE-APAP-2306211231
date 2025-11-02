@@ -6,6 +6,7 @@ import apap.ti._5.accommodation_2306211231_be.restdto.request.room.roomtype.Room
 import apap.ti._5.accommodation_2306211231_be.restdto.request.room.roomtype.RoomTypeUpdateRequest;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.room.roomtype.RoomTypeDetailDto;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.room.roomtype.RoomTypeSummaryDto;
+import apap.ti._5.accommodation_2306211231_be.restmapper.RoomTypeMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -20,7 +21,7 @@ public class RoomTypeRestService {
 
     // Entity helpers (to be implemented later)
     public Optional<RoomType> getById(String roomTypeId) {
-        throw new UnsupportedOperationException("Not implemented yet");
+        return roomTypeRepository.findById(roomTypeId);
     }
 
     public List<RoomType> getByPropertyId(String propertyId) {
@@ -29,7 +30,14 @@ public class RoomTypeRestService {
 
     // DTO helpers (to be implemented later)
     public RoomTypeDetailDto getDetailDto(String roomTypeId) {
-        throw new UnsupportedOperationException("Not implemented yet");
+        return RoomTypeMapper.toDetailDto(
+                getById(roomTypeId)
+                .orElseThrow(() -> 
+                new IllegalArgumentException(
+                    "RoomType not found: " + 
+                    roomTypeId)
+                    )
+        );
     }
 
     public List<RoomTypeSummaryDto> getSummariesByProperty(String propertyId) {

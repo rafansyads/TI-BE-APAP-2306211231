@@ -37,4 +37,11 @@ public final class IdUtil {
         int roomNumber = floor * 100 + unitIndex; // yields 101, 1001, 10002, etc.
         return propertyId + "-" + roomNumber;
     }
+
+    public static String fetchPropertyIdFromRoomId(String roomId) {
+        if (roomId == null || roomId.length() < 5) return null;
+        int lastDash = roomId.lastIndexOf("-");
+        if (lastDash == -1) return null;
+        return roomId.substring(0, lastDash);
+    }
 }

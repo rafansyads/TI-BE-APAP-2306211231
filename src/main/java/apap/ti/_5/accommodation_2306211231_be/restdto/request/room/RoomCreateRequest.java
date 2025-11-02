@@ -9,11 +9,14 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class RoomCreateRequest {
-    @NotBlank private String roomId; // provided by client
-    @NotBlank private String name;
+    // Optional: client may omit; when provided, must match generated ID
+    private String roomId;
+    // Name will be auto-generated from room number (e.g., 202)
+    private String name;
     @NotNull @Min(0) @Max(1) private Integer availabilityStatus;
     @NotNull @Min(0) @Max(1) private Integer activeRoom;
     private String maintenanceStart; // ISO string; convert in service
     private String maintenanceEnd;
-    @NotBlank private String roomTypeId;
+    // Optional: if multiple room types are defined, client must provide; if exactly one, may omit
+    private String roomTypeId;
 }

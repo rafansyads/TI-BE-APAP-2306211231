@@ -7,20 +7,24 @@ import apap.ti._5.accommodation_2306211231_be.repository.PropertyRepository;
 import apap.ti._5.accommodation_2306211231_be.repository.RoomRepository;
 import apap.ti._5.accommodation_2306211231_be.repository.RoomTypeRepository;
 import apap.ti._5.accommodation_2306211231_be.restdto.request.property.PropertyCreateRequest;
+import apap.ti._5.accommodation_2306211231_be.restdto.request.room.RoomCreateRequest;
+import apap.ti._5.accommodation_2306211231_be.restdto.request.room.RoomUpdateRequest;
+import apap.ti._5.accommodation_2306211231_be.restdto.request.room.roomtype.RoomTypeCreateRequest;
 import apap.ti._5.accommodation_2306211231_be.restdto.request.property.PropertyUpdateRequest;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.property.PropertyDetailDto;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.property.PropertySummaryDto;
+import apap.ti._5.accommodation_2306211231_be.restdto.response.room.RoomDetailDto;
 import apap.ti._5.accommodation_2306211231_be.restmapper.PropertyMapper;
+import apap.ti._5.accommodation_2306211231_be.restmapper.RoomMapper;
 import apap.ti._5.accommodation_2306211231_be.util.ProvinceUtil;
 import apap.ti._5.accommodation_2306211231_be.util.IdUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 import java.util.stream.Collectors;
 import java.time.LocalDateTime;
-import java.util.UUID;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
@@ -77,22 +81,144 @@ public class PropertyRestService {
         return PropertyMapper.toDetailDto(p);
     }
 
+    @Transactional
     public PropertyDetailDto createProperty(PropertyCreateRequest request) {
-        
-        if (request == null) throw new IllegalArgumentException("Request cannot be null");
+
+        if (request == null)
+            throw new IllegalArgumentException("Request cannot be null");
         if (!ProvinceUtil.isValidCode(request.getProvince())) {
             throw new IllegalArgumentException("Invalid province code: " + request.getProvince());
         }
+        // Validate owner UUID ↔ name consistency
+        UUID ownerUuid = UUID.fromString(request.getOwnerId());
+        propertyRepository.findFirstByOwnerId(ownerUuid).ifPresent(existing -> {
+            if (existing.getOwnerName() != null && request.getOwnerName() != null
+                    && !existing.getOwnerName().equals(request.getOwnerName())) {
+                throw new IllegalArgumentException("Owner UUID/name mismatch for UUID: " + ownerUuid);
+            }
+        });
+        // Validate presence of at least one room type
+        List<RoomTypeCreateRequest> rtReqs = request.getRoomTypes();
+        if (rtReqs == null || rtReqs.isEmpty()) {
+            throw new IllegalArgumentException("At least one room type is required when creating a property");
+        }
+        // Rule: do NOT allow duplicate room type names on the same floor within a
+        // property
+        Map<Integer, Set<String>> typeNamesPerFloor = new HashMap<>();
+        for (RoomTypeCreateRequest rtr : rtReqs) {
+            int floor = rtr.getFloor() != null ? rtr.getFloor() : 0;
+            String nameKey = (rtr.getName() == null ? "" : rtr.getName().trim().toLowerCase());
+            Set<String> names = typeNamesPerFloor.computeIfAbsent(floor, k -> new HashSet<>());
+            if (names.contains(nameKey)) {
+                throw new IllegalArgumentException(
+                        "Duplicate room type '" + rtr.getName() + "' on floor " + floor + " is not allowed");
+            }
+            names.add(nameKey);
+        }
+        // If multiple room types exist, rooms without roomTypeId cannot be
+        // auto-assigned
+        // note: we'll enforce the multiple room types condition when assigning rooms
+
+        // Map and assemble the aggregate
         Property entity = PropertyMapper.fromCreateRequest(request);
+
+        // Generate Property ID with retry-safe allocator to reduce race conditions
+        String propertyId = allocatePropertyId(request.getType(), ownerUuid);
+        entity.setPropertyId(propertyId);
+
+        // We'll keep per-floor unit index to avoid duplicate room numbers across
+        // different room types on same floor
+        Map<Integer, Integer> nextUnitByFloor = new HashMap<>();
+
+        int totalRooms = 0;
         
-        // Generate ID on backend per spec
-        long seq = propertyRepository.count() + 1; // regardless of owner
-        var ownerUuid = UUID.fromString(request.getOwnerId());
-        String generatedId = IdUtil.generatePropertyId(request.getType(), ownerUuid, seq);
-        entity.setPropertyId(generatedId);
-        
+        for (RoomTypeCreateRequest rtr : rtReqs) {
+            int floor = rtr.getFloor() != null ? rtr.getFloor() : 0;
+            if (floor > 9) {
+                throw new IllegalArgumentException("Floor number cannot exceed 9");
+            }
+            String generatedRtId = IdUtil.generateRoomTypeId(propertyId, rtr.getName(), floor);
+
+            // If client provided roomTypeId, it must match the generated one; otherwise
+            // reject
+            if (rtr.getRoomTypeId() != null && !rtr.getRoomTypeId().isBlank()
+                    && !rtr.getRoomTypeId().equals(generatedRtId)) {
+                throw new IllegalArgumentException(
+                        "roomTypeId mismatch for type '" + rtr.getName() + "' on floor " + floor +
+                                ": expected '" + generatedRtId + "' but got '" + rtr.getRoomTypeId() + "'");
+            }
+
+            RoomType rt = new RoomType();
+            rt.setRoomTypeId(generatedRtId);
+            rt.setName(rtr.getName());
+            rt.setPrice(rtr.getPrice());
+            rt.setDescription(rtr.getDescription());
+            rt.setCapacity(rtr.getCapacity());
+            rt.setFacility(rtr.getFacility());
+            rt.setFloor(floor);
+            rt.setProperty(entity);
+
+            // Allocate rooms under this type (nested request)
+            List<RoomCreateRequest> roomsReq = rtr.getRooms();
+            if (roomsReq == null || roomsReq.isEmpty()) {
+                throw new IllegalArgumentException("RoomType '" + rtr.getName() + "' must include at least one room");
+            }
+
+            for (RoomCreateRequest rr : roomsReq) {
+                int fl = floor;
+                int nextUnitIndex = nextUnitByFloor.getOrDefault(fl, 0) + 1; // start from 1 per floor
+                if (nextUnitIndex > 99) {
+                    throw new IllegalArgumentException("Room number per floor cannot exceed 99");
+                }
+                String expectedRoomId = IdUtil.generateRoomId(propertyId, fl, nextUnitIndex);
+
+                if (rr.getRoomId() != null && !rr.getRoomId().isBlank()
+                        && !rr.getRoomId().equals(expectedRoomId)) {
+                    throw new IllegalArgumentException(
+                            "roomId mismatch for room on floor " + fl +
+                                    ": expected '" + expectedRoomId + "' but got '" + rr.getRoomId() + "'");
+                }
+
+                int unitIndex = nextUnitByFloor.merge(fl, 1, Integer::sum);
+                String roomId = IdUtil.generateRoomId(propertyId, fl, unitIndex);
+
+                Room room = new Room();
+                room.setRoomId(roomId);
+                String roomNumberStr = roomId.substring(roomId.lastIndexOf('-') + 1);
+                room.setName(roomNumberStr);
+                room.setAvailabilityStatus(rr.getAvailabilityStatus());
+                room.setActiveRoom(rr.getActiveRoom());
+                room.setMaintenanceStart(parseDate(rr.getMaintenanceStart()));
+                room.setMaintenanceEnd(parseDate(rr.getMaintenanceEnd()));
+                room.setRoomType(rt);
+
+                rt.addRoom(room);
+                totalRooms++;
+            }
+
+            entity.addRoomType(rt);
+        }
+
+        // Final validations
+        if (entity.getListRoomType() == null || entity.getListRoomType().isEmpty()) {
+            throw new IllegalArgumentException("Property must have at least one room type");
+        }
+        if (totalRooms == 0) {
+            throw new IllegalArgumentException("Property must have at least one room");
+        }
+        // Ensure each room type has at least one room (already enforced per type above)
+
+        // Ensure totalRoom matches actual allocated rooms
+        entity.setTotalRoom(totalRooms);
+
         Property saved = propertyRepository.save(entity);
         return PropertyMapper.toDetailDto(saved);
+    }
+
+    private static LocalDateTime parseDate(String s) {
+        if (s == null || s.isBlank())
+            return null;
+        return LocalDateTime.parse(s);
     }
 
     public PropertyDetailDto updateProperty(String propertyId, PropertyUpdateRequest request) {
@@ -101,9 +227,172 @@ public class PropertyRestService {
         if (request.getProvince() != null && !ProvinceUtil.isValidCode(request.getProvince())) {
             throw new IllegalArgumentException("Invalid province code: " + request.getProvince());
         }
+        // Validate owner UUID ↔ name consistency on update as well
+        if (request.getOwnerId() != null) {
+            UUID ownerUuid = UUID.fromString(request.getOwnerId());
+            propertyRepository.findFirstByOwnerId(ownerUuid).ifPresent(other -> {
+                if (other.getOwnerName() != null && request.getOwnerName() != null
+                        && !other.getOwnerName().equals(request.getOwnerName())) {
+                    throw new IllegalArgumentException("Owner UUID/name mismatch for UUID: " + ownerUuid);
+                }
+            });
+        }
         PropertyMapper.updateEntity(existing, request);
         Property saved = propertyRepository.save(existing);
         return PropertyMapper.toDetailDto(saved);
+    }
+
+    public PropertyDetailDto updatePropertyRooms(String propertyId, RoomTypeCreateRequest req) {
+        Property existing = propertyRepository.findByPropertyIdAndDeletedAtIsNull(propertyId)
+                .orElseThrow(() -> new IllegalArgumentException("Property not found: " + propertyId));
+
+        if (req == null) {
+            throw new IllegalArgumentException("Request cannot be null");
+        }
+        int floor = req.getFloor() != null ? req.getFloor() : 0;
+        if (floor > 9) {
+            throw new IllegalArgumentException("Floor number cannot exceed 9");
+        }
+        List<RoomCreateRequest> roomsReq = req.getRooms();
+        if (roomsReq == null || roomsReq.isEmpty()) {
+            throw new IllegalArgumentException("Rooms list cannot be empty for update");
+        }
+
+        // Find existing room type by name and floor; if not found, create it (ensuring no duplicate name on same floor)
+        RoomType targetRt = null;
+        for (RoomType rt : existing.getListRoomType()) {
+            int f = rt.getFloor() != null ? rt.getFloor() : 0;
+            if (f == floor && rt.getName().equals(req.getName())) {
+                targetRt = rt;
+                break;
+            }
+        }
+        if (targetRt == null) {
+            boolean duplicate = existing.getListRoomType().stream()
+                    .anyMatch(rt -> (rt.getFloor() != null ? rt.getFloor() : 0) == floor
+                            && rt.getName().equalsIgnoreCase(req.getName()));
+            if (duplicate) {
+                throw new IllegalArgumentException("Duplicate room type '" + req.getName() + "' on floor " + floor + " is not allowed");
+            }
+            String generatedRtId = IdUtil.generateRoomTypeId(propertyId, req.getName(), floor);
+            if (req.getRoomTypeId() != null && !req.getRoomTypeId().isBlank()
+                    && !req.getRoomTypeId().equals(generatedRtId)) {
+                throw new IllegalArgumentException("roomTypeId mismatch: expected '" + generatedRtId + "' but got '" + req.getRoomTypeId() + "'");
+            }
+            targetRt = new RoomType();
+            targetRt.setRoomTypeId(generatedRtId);
+            targetRt.setName(req.getName());
+            targetRt.setPrice(req.getPrice());
+            targetRt.setDescription(req.getDescription());
+            targetRt.setCapacity(req.getCapacity());
+            targetRt.setFacility(req.getFacility());
+            targetRt.setFloor(floor);
+            targetRt.setProperty(existing);
+            existing.addRoomType(targetRt);
+        }
+
+        // Build per-floor next index from existing rooms across the property
+        Map<Integer, Integer> nextUnitByFloor = new HashMap<>();
+        for (RoomType rt : existing.getListRoomType()) {
+            if (rt.getListRoom() == null) continue;
+            for (Room r : rt.getListRoom()) {
+                String id = r.getRoomId();
+                if (id == null) continue;
+                try {
+                    String numStr = id.substring(id.lastIndexOf('-') + 1);
+                    int num = Integer.parseInt(numStr);
+                    int f = num / 100;
+                    int idx = num - f * 100;
+                    nextUnitByFloor.merge(f, idx, Math::max);
+                } catch (Exception ignore) {}
+            }
+        }
+
+        int added = 0;
+        for (RoomCreateRequest rr : roomsReq) {
+            int nextIdx = nextUnitByFloor.getOrDefault(floor, 0) + 1;
+            if (nextIdx > 99) {
+                throw new IllegalArgumentException("Room number per floor cannot exceed 99");
+            }
+            String expectedRoomId = IdUtil.generateRoomId(propertyId, floor, nextIdx);
+            if (rr.getRoomId() != null && !rr.getRoomId().isBlank()
+                    && !rr.getRoomId().equals(expectedRoomId)) {
+                throw new IllegalArgumentException("roomId mismatch for update: expected '" + expectedRoomId + "' but got '" + rr.getRoomId() + "'");
+            }
+            String roomId = expectedRoomId;
+            nextUnitByFloor.put(floor, nextIdx);
+
+            Room room = new Room();
+            room.setRoomId(roomId);
+            String roomNumberStr = roomId.substring(roomId.lastIndexOf('-') + 1);
+            room.setName(roomNumberStr);
+            room.setAvailabilityStatus(rr.getAvailabilityStatus());
+            room.setActiveRoom(rr.getActiveRoom());
+            room.setMaintenanceStart(parseDate(rr.getMaintenanceStart()));
+            room.setMaintenanceEnd(parseDate(rr.getMaintenanceEnd()));
+            room.setRoomType(targetRt);
+
+            targetRt.addRoom(room);
+            added++;
+        }
+
+        existing.setTotalRoom((existing.getTotalRoom() == null ? 0 : existing.getTotalRoom()) + added);
+        Property saved = propertyRepository.save(existing);
+        return PropertyMapper.toDetailDto(saved);
+    }
+
+    public RoomDetailDto addMaintenance(RoomUpdateRequest request) {
+        // Validate and parse request data
+        String roomTypeId = request.getRoomTypeId();
+        
+        if (roomTypeId == null || roomTypeId.isBlank()) {
+            throw new IllegalArgumentException("roomTypeId cannot be blank");
+        }
+
+        String roomId = request.getId();
+
+        if (roomId == null || roomId.isBlank()) {
+            throw new IllegalArgumentException("roomId cannot be blank");
+        }
+
+        String propertyId = IdUtil.fetchPropertyIdFromRoomId(roomId);
+
+        if (propertyId == null || propertyId.isBlank()) {
+            throw new IllegalArgumentException("Invalid roomId format, cannot extract propertyId");
+        }
+
+        LocalDateTime maintenanceStart = parseDate(request.getMaintenanceStart());
+        LocalDateTime maintenanceEnd = parseDate(request.getMaintenanceEnd());
+
+        if (maintenanceStart == null || maintenanceEnd == null) {
+            throw new IllegalArgumentException("Maintenance start and end dates cannot be null");
+        } else if (maintenanceEnd.isBefore(maintenanceStart)) {
+            throw new IllegalArgumentException("Maintenance end date cannot be before start date");
+        } 
+        
+        // Ensure maintenance dates are not in the past (the same day is allowed but after the current time)
+        if (maintenanceStart.isBefore(LocalDateTime.now()) || maintenanceEnd.isBefore(LocalDateTime.now())) {
+            throw new IllegalArgumentException("Maintenance start and end date cannot be in the past");
+        }
+
+        // Find the property and room
+        Property property = propertyRepository.findByPropertyIdAndDeletedAtIsNull(propertyId)
+                .orElseThrow(() -> new IllegalArgumentException("Property not found: " + propertyId));
+        RoomType roomType = property.getListRoomType().stream()
+                .filter(rt -> rt.getRoomTypeId().equals(roomTypeId))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("RoomType not found: " + roomTypeId));
+        Room room = roomType.getListRoom().stream()
+                .filter(r -> r.getRoomId().equals(roomId))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Room not found: " + roomId));
+
+        // Update room maintenance schedule
+        room.setMaintenanceStart(maintenanceStart);
+        room.setMaintenanceEnd(maintenanceEnd);
+        Room savedRoom = roomRepository.save(room);
+
+        return RoomMapper.toDetailDto(savedRoom);
     }
 
     public void softDeleteProperty(String propertyId) {
@@ -111,5 +400,45 @@ public class PropertyRestService {
                 .orElseThrow(() -> new IllegalArgumentException("Property not found: " + propertyId));
         existing.setDeletedAt(LocalDateTime.now());
         propertyRepository.save(existing);
+    }
+
+    /**
+     * Allocate a propertyId that minimizes race conditions by checking for existing
+     * IDs and retrying.
+     * Strategy:
+     * - Scan existing property IDs to find the maximum numeric counter suffix (XXX)
+     * - Try the next counter; if exists, increment and retry a few times
+     */
+    private String allocatePropertyId(int type, UUID ownerUuid) {
+        // gather current max counter
+        int max = propertyRepository.findAll().stream()
+                .map(Property::getPropertyId)
+                .filter(Objects::nonNull)
+                .mapToInt(IdUtil::extractPropertyCounter)
+                .max().orElse(0);
+
+        for (int attempt = 1; attempt <= 5; attempt++) {
+            int candidate = max + attempt;
+            String pid = IdUtil.generatePropertyId(type, ownerUuid, candidate);
+            if (!propertyRepository.existsById(pid)) {
+                return pid;
+            }
+        }
+        // Fallback: last resort pick a far future counter
+        int fallback = max + 100 + new Random().nextInt(900);
+        return IdUtil.generatePropertyId(type, ownerUuid, fallback);
+    }
+
+    /**
+     * Predict the next property numeric sequence (max suffix + 1). For client-side
+     * convenience only.
+     */
+    public int predictNextPropertySequence() {
+        int max = propertyRepository.findAll().stream()
+                .map(Property::getPropertyId)
+                .filter(Objects::nonNull)
+                .mapToInt(IdUtil::extractPropertyCounter)
+                .max().orElse(0);
+        return max + 1;
     }
 }
