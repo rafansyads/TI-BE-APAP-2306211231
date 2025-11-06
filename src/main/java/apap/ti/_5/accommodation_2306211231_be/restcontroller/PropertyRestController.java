@@ -9,6 +9,7 @@ import apap.ti._5.accommodation_2306211231_be.restdto.request.room.RoomUpdateReq
 import apap.ti._5.accommodation_2306211231_be.restdto.request.room.roomtype.RoomTypeCreateRequest;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.property.PropertyDetailDto;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.property.PropertySummaryDto;
+import apap.ti._5.accommodation_2306211231_be.restdto.response.property.OwnerSummaryDto;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.room.RoomDetailDto;
 import apap.ti._5.accommodation_2306211231_be.util.ResponseUtil;
 import apap.ti._5.accommodation_2306211231_be.util.IdUtil;
@@ -87,12 +88,17 @@ public class PropertyRestController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<BaseResponseDto<PropertyDetailDto>> getProperty(@PathVariable("id") String id) {
+    public ResponseEntity<BaseResponseDto<PropertyDetailDto>> getProperty(
+            @PathVariable("id") String id,
+            @RequestParam(name = "checkIn", required = false) String checkIn,
+            @RequestParam(name = "checkOut", required = false) String checkOut) {
         try {
-            PropertyDetailDto dto = propertyService.getPropertyDetailDto(id);
+            PropertyDetailDto dto = (checkIn != null && checkOut != null)
+                    ? propertyService.getPropertyDetailDto(id, checkIn, checkOut)
+                    : propertyService.getPropertyDetailDto(id);
             return ResponseUtil.success(
                     dto,
-                    "[GET] The property details retrieved successfully",
+                    "[GET] The property details retrieved successfully" + (checkIn != null && checkOut != null ? " with availability filter" : ""),
                     HttpStatus.OK);
         } catch (IllegalArgumentException ex) {
             return ResponseUtil.error(ex.getMessage(), HttpStatus.NOT_FOUND);
@@ -160,6 +166,32 @@ public class PropertyRestController {
             return ResponseUtil.error(
                     ex.getMessage(),
                     HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    /**
+     * Recompute and persist totalRoom for a property by counting all rooms under it.
+     */
+    @PostMapping("/recompute-totalrooms/{id}")
+    public ResponseEntity<BaseResponseDto<PropertyDetailDto>> recomputeTotalRooms(@PathVariable("id") String id) {
+        try {
+            PropertyDetailDto dto = propertyService.recomputeTotalRooms(id);
+            return ResponseUtil.success(dto, "[POST] Recomputed totalRoom successfully", HttpStatus.OK);
+        } catch (IllegalArgumentException ex) {
+            return ResponseUtil.error(ex.getMessage(), HttpStatus.NOT_FOUND);
+        }
+    }
+
+    /**
+     * List distinct owners (UUID + name) based on existing properties.
+     */
+    @GetMapping("/owners")
+    public ResponseEntity<BaseResponseDto<List<OwnerSummaryDto>>> listOwners() {
+        try {
+            List<OwnerSummaryDto> owners = propertyService.getOwners();
+            return ResponseUtil.success(owners, "[GET] Owners retrieved successfully", HttpStatus.OK);
+        } catch (Exception ex) {
+            return ResponseUtil.error("Failed to fetch owners", HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 

@@ -1,5 +1,7 @@
 package apap.ti._5.accommodation_2306211231_be.util;
 
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import java.util.UUID;
 
@@ -43,5 +45,19 @@ public final class IdUtil {
         int lastDash = roomId.lastIndexOf("-");
         if (lastDash == -1) return null;
         return roomId.substring(0, lastDash);
+    }
+
+    public static String generateBookingId(String roomId, ZonedDateTime bookingTimeJakarta) {
+        String suffix = extractLast7(roomId);
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd-HH:mm:ss");
+        String ts = bookingTimeJakarta.format(fmt);
+        return "BOOK-" + suffix + "-" + ts;
+    }
+
+    private static String extractLast7(String s) {
+        if (s == null) return "";
+        String str = s.trim();
+        if (str.length() <= 7) return str;
+        return str.substring(str.length() - 7);
     }
 }

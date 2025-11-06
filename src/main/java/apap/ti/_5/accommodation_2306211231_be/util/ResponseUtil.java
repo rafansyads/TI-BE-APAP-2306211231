@@ -9,7 +9,8 @@ import apap.ti._5.accommodation_2306211231_be.restdto.BaseResponseDto;
 import java.util.Date;
 
 /**
- * Utility to build standardized REST responses using {@link io.hafizmuh.apaplib.dto.BaseResponseDTO}.
+ * Utility to build standardized REST responses using 
+ * (props to practice from) {@link io.hafizmuh.apaplib.dto.BaseResponseDTO}.
  * Wrap all REST controller responses with this to keep the format consistent.
  */
 @Component

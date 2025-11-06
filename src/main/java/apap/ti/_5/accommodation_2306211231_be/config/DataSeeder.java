@@ -86,6 +86,7 @@ public class DataSeeder implements CommandLineRunner {
                     .province(province)
                     .description("Seeded property")
                     .totalRoom(0) // set later
+            .profit(0)
                     .activeStatus(1)
                     .ownerName("Owner " + (propIndex+1))
                     .ownerId(owner)

@@ -1,17 +1,17 @@
 package apap.ti._5.accommodation_2306211231_be.restmapper;
 
+import java.util.List;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
 import apap.ti._5.accommodation_2306211231_be.models.Property;
 import apap.ti._5.accommodation_2306211231_be.models.RoomType;
 import apap.ti._5.accommodation_2306211231_be.restdto.request.property.PropertyCreateRequest;
 import apap.ti._5.accommodation_2306211231_be.restdto.request.property.PropertyUpdateRequest;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.property.PropertyDetailDto;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.property.PropertySummaryDto;
-import apap.ti._5.accommodation_2306211231_be.restdto.response.room.RoomSummaryDto;
+import apap.ti._5.accommodation_2306211231_be.restdto.response.room.RoomDetailDto;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.room.roomtype.RoomTypeSummaryDto;
-
-import java.util.List;
-import java.util.UUID;
-import java.util.stream.Collectors;
 import apap.ti._5.accommodation_2306211231_be.util.ProvinceUtil;
 
 public final class PropertyMapper {
@@ -33,7 +33,7 @@ public final class PropertyMapper {
     public static PropertyDetailDto toDetailDto(Property p) {
         if (p == null) return null;
         List<RoomTypeSummaryDto> roomTypes = null;
-        List<RoomSummaryDto> rooms = null;
+    List<RoomDetailDto> rooms = null;
         if (p.getListRoomType() != null) {
             roomTypes = p.getListRoomType().stream()
                 .map(PropertyMapper::toRoomTypeSummary)
@@ -41,13 +41,7 @@ public final class PropertyMapper {
             rooms = p.getListRoomType().stream()
                 .filter(rt -> rt.getListRoom() != null)
                 .flatMap(rt -> rt.getListRoom().stream())
-                .map(r -> new RoomSummaryDto(
-                    r.getRoomId(),
-                    r.getName(),
-                    r.getAvailabilityStatus(),
-                    r.getActiveRoom(),
-                    r.getRoomType() != null ? r.getRoomType().getRoomTypeId() : null
-                ))
+                .map(RoomMapper::toDetailDto)
                 .collect(Collectors.toList());
         }
 
@@ -63,6 +57,8 @@ public final class PropertyMapper {
         dto.setActiveStatus(p.getActiveStatus());
         dto.setOwnerName(p.getOwnerName());
         dto.setOwnerId(p.getOwnerId() != null ? p.getOwnerId().toString() : null);
+        dto.setCreatedDate(p.getCreatedDate());
+        dto.setUpdatedDate(p.getUpdatedDate());
         dto.setRoomTypes(roomTypes);
         dto.setRooms(rooms);
         dto.setDeletedAt(p.getDeletedAt());
@@ -87,14 +83,9 @@ public final class PropertyMapper {
     public static void updateEntity(Property entity, PropertyUpdateRequest req) {
         if (entity == null || req == null) return;
         entity.setPropertyName(req.getPropertyName());
-        entity.setType(req.getType());
         entity.setAddress(req.getAddress());
-        entity.setProvince(req.getProvince());
         entity.setDescription(req.getDescription());
-        entity.setTotalRoom(req.getTotalRoom());
-        entity.setActiveStatus(req.getActiveStatus());
-        entity.setOwnerName(req.getOwnerName());
-        entity.setOwnerId(UUID.fromString(req.getOwnerId()));
+        // Province, owner and other immutable fields are validated/handled in service
     }
 
     private static RoomTypeSummaryDto toRoomTypeSummary(RoomType rt) {

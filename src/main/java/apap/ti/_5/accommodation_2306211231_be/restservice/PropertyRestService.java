@@ -13,8 +13,11 @@ import apap.ti._5.accommodation_2306211231_be.restdto.request.room.roomtype.Room
 import apap.ti._5.accommodation_2306211231_be.restdto.request.property.PropertyUpdateRequest;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.property.PropertyDetailDto;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.property.PropertySummaryDto;
+import apap.ti._5.accommodation_2306211231_be.restdto.response.property.OwnerSummaryDto;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.room.RoomDetailDto;
 import apap.ti._5.accommodation_2306211231_be.restmapper.PropertyMapper;
+import apap.ti._5.accommodation_2306211231_be.util.DateUtil;
+import apap.ti._5.accommodation_2306211231_be.models.AccommodationBooking;
 import apap.ti._5.accommodation_2306211231_be.restmapper.RoomMapper;
 import apap.ti._5.accommodation_2306211231_be.util.ProvinceUtil;
 import apap.ti._5.accommodation_2306211231_be.util.IdUtil;
@@ -81,6 +84,99 @@ public class PropertyRestService {
         return PropertyMapper.toDetailDto(p);
     }
 
+    /**
+     * Return property details and, when date range is provided, filter the rooms list
+     * to only include rooms available (no maintenance and no overlapping bookings) in that range.
+     */
+    public PropertyDetailDto getPropertyDetailDto(String propertyId, String checkIn, String checkOut) {
+        Property p = propertyRepository.findByPropertyIdAndDeletedAtIsNull(propertyId)
+                .orElseThrow(() -> new IllegalArgumentException("Property not found: " + propertyId));
+
+        // If no filters, regular mapping
+        if (checkIn == null || checkIn.isBlank() || checkOut == null || checkOut.isBlank()) {
+            return PropertyMapper.toDetailDto(p);
+        }
+
+        // Compose normalized anchors (14:00 in, 12:00 out)
+        LocalDateTime in = DateUtil.normalizeCheckIn(LocalDateTime.parse(checkIn + "T00:00:00"));
+        LocalDateTime out = DateUtil.normalizeCheckOut(LocalDateTime.parse(checkOut + "T00:00:00"));
+
+        // Start with base dto
+        PropertyDetailDto dto = PropertyMapper.toDetailDto(p);
+        if (dto == null) return null;
+
+        // Evaluate rooms availability but keep all rooms; mark availability via computed availabilityStatus (1=available,0=unavailable)
+        List<Room> filteredRooms = new ArrayList<>();
+        if (p.getListRoomType() != null) {
+            for (RoomType rt : p.getListRoomType()) {
+                if (rt.getListRoom() == null) continue;
+                for (Room r : rt.getListRoom()) {
+                    // Compute dynamic availability for requested window.
+                    boolean available = true;
+                    // Active flag
+                    if (r.getActiveRoom() != null && r.getActiveRoom() == 0) available = false;
+                    // Maintenance overlap
+                    if (available && r.getMaintenanceStart() != null && r.getMaintenanceEnd() != null
+                        && DateUtil.isOverlapping(in, out, r.getMaintenanceStart(), r.getMaintenanceEnd())) {
+                        available = false;
+                    }
+                    // Booking overlap (exclude canceled)
+                    if (available && r.getBookings() != null) {
+                        for (AccommodationBooking b : r.getBookings()) {
+                            Integer st = b.getStatus();
+                            if (st != null && st == 2) continue;
+                            if (b.getCheckInDate() != null && b.getCheckOutDate() != null
+                                && DateUtil.isOverlapping(in, out, b.getCheckInDate(), b.getCheckOutDate())) {
+                                available = false; break;
+                            }
+                        }
+                    }
+                    // Mutate transient availabilityStatus for mapping (1=available,0=unavailable)
+                    r.setAvailabilityStatus(available ? 1 : 0);
+                    filteredRooms.add(r);
+                }
+            }
+        }
+
+        // Remap rooms list to DTO (include all rooms with updated availabilityStatus)
+        List<RoomDetailDto> roomDtos = filteredRooms.stream()
+                .map(RoomMapper::toDetailDto)
+                .collect(Collectors.toList());
+        dto.setRooms(roomDtos);
+        // roomTypes remain summaries; FE groups rooms by roomTypeId from rooms list
+        return dto;
+    }
+
+    public PropertyDetailDto recomputeTotalRooms(String propertyId) {
+        Property p = propertyRepository.findByPropertyIdAndDeletedAtIsNull(propertyId)
+                .orElseThrow(() -> new IllegalArgumentException("Property not found: " + propertyId));
+        int total = 0;
+        if (p.getListRoomType() != null) {
+            for (RoomType rt : p.getListRoomType()) {
+                total += (rt.getListRoom() == null ? 0 : rt.getListRoom().size());
+            }
+        }
+        p.setTotalRoom(total);
+        Property saved = propertyRepository.save(p);
+        return PropertyMapper.toDetailDto(saved);
+    }
+
+    public List<OwnerSummaryDto> getOwners() {
+        // Distinct owners from current (non-deleted) properties
+        var props = propertyRepository.findByDeletedAtIsNull();
+        Map<String, String> map = new LinkedHashMap<>();
+        for (Property pr : props) {
+            if (pr.getOwnerId() != null && pr.getOwnerName() != null) {
+                map.putIfAbsent(pr.getOwnerId().toString(), pr.getOwnerName());
+            }
+        }
+        List<OwnerSummaryDto> list = new ArrayList<>();
+        for (var e : map.entrySet()) {
+            list.add(new OwnerSummaryDto(e.getKey(), e.getValue()));
+        }
+        return list;
+    }
+
     @Transactional
     public PropertyDetailDto createProperty(PropertyCreateRequest request) {
 
@@ -131,7 +227,7 @@ public class PropertyRestService {
         Map<Integer, Integer> nextUnitByFloor = new HashMap<>();
 
         int totalRooms = 0;
-        
+
         for (RoomTypeCreateRequest rtr : rtReqs) {
             int floor = rtr.getFloor() != null ? rtr.getFloor() : 0;
             if (floor > 9) {
@@ -211,6 +307,15 @@ public class PropertyRestService {
         // Ensure totalRoom matches actual allocated rooms
         entity.setTotalRoom(totalRooms);
 
+        // Let Hibernate timestamps do their job, but also set explicitly for clarity
+        // in case the provider is configured without auditing.
+        if (entity.getCreatedDate() == null) {
+            entity.setCreatedDate(LocalDateTime.now());
+        }
+        if (entity.getUpdatedDate() == null) {
+            entity.setUpdatedDate(entity.getCreatedDate());
+        }
+
         Property saved = propertyRepository.save(entity);
         return PropertyMapper.toDetailDto(saved);
     }
@@ -221,13 +326,42 @@ public class PropertyRestService {
         return LocalDateTime.parse(s);
     }
 
+    private static int parseRoomNumber(String roomId) {
+        if (roomId == null)
+            return -1;
+        try {
+            String numStr = roomId.substring(roomId.lastIndexOf('-') + 1);
+            return Integer.parseInt(numStr);
+        } catch (NumberFormatException e) {
+            return -1;
+        } catch (Exception ignore) {
+            throw new UnknownError("Failed to parse room number from roomId: " + roomId);
+        }
+    }
+
     public PropertyDetailDto updateProperty(String propertyId, PropertyUpdateRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("Request cannot be null");
+        }
+
         Property existing = propertyRepository.findByPropertyIdAndDeletedAtIsNull(propertyId)
                 .orElseThrow(() -> new IllegalArgumentException("Property not found: " + propertyId));
+
+        // Validate province code
         if (request.getProvince() != null && !ProvinceUtil.isValidCode(request.getProvince())) {
             throw new IllegalArgumentException("Invalid province code: " + request.getProvince());
         }
-        // Validate owner UUID ↔ name consistency on update as well
+
+        // Province provided: only allowed if matches existing; if existing is null,
+        // ignore the provided value
+        if (request.getProvince() != null) {
+            if (existing.getProvince() != null && !request.getProvince().equals(existing.getProvince())) {
+                throw new IllegalArgumentException("Cannot change province code: " + request.getProvince());
+            }
+        }
+
+        // Validate owner UUID ↔ name consistency on update as well (but do not mutate
+        // owner fields)
         if (request.getOwnerId() != null) {
             UUID ownerUuid = UUID.fromString(request.getOwnerId());
             propertyRepository.findFirstByOwnerId(ownerUuid).ifPresent(other -> {
@@ -237,7 +371,112 @@ public class PropertyRestService {
                 }
             });
         }
+
+        // Update allowed Property fields only
         PropertyMapper.updateEntity(existing, request);
+
+        // If there are room type updates, apply them
+        if (request.getRoomTypes() != null && !request.getRoomTypes().isEmpty()) {
+            // Build a map of existing RoomTypes by id for quick lookup and also compute
+            // per-floor next unit index
+            Map<String, RoomType> byId = new HashMap<>();
+            Map<Integer, Integer> nextUnitByFloor = new HashMap<>();
+            for (RoomType rt : existing.getListRoomType()) {
+                byId.put(rt.getRoomTypeId(), rt);
+                if (rt.getListRoom() != null) {
+                    for (Room r : rt.getListRoom()) {
+                        String id = r.getRoomId();
+                        if (id == null)
+                            continue;
+                        try {
+                            String numStr = id.substring(id.lastIndexOf('-') + 1);
+                            int num = Integer.parseInt(numStr);
+                            int f = num / 100;
+                            int idx = num - f * 100;
+                            nextUnitByFloor.merge(f, idx, Math::max);
+                        } catch (Exception ignore) {
+                        }
+                    }
+                }
+            }
+
+            // Apply updates per RoomType
+            for (var rtReq : request.getRoomTypes()) {
+                if (rtReq.getRoomTypeId() == null || rtReq.getRoomTypeId().isBlank()) {
+                    throw new IllegalArgumentException("roomTypeId is required for update");
+                }
+                RoomType rt = byId.get(rtReq.getRoomTypeId());
+                if (rt == null) {
+                    throw new IllegalArgumentException("RoomType not found on this property: " + rtReq.getRoomTypeId());
+                }
+                // Enforce ID immutability: propertyId doesn't change, roomTypeId doesn't change
+                // Update allowed fields: price, description, facility
+                if (rtReq.getPrice() != null)
+                    rt.setPrice(rtReq.getPrice());
+                if (rtReq.getDescription() != null)
+                    rt.setDescription(rtReq.getDescription());
+                if (rtReq.getFacility() != null)
+                    rt.setFacility(rtReq.getFacility());
+
+                // Adjust number of rooms to match requested capacity, if provided
+                if (rtReq.getCapacity() != null) {
+                    int target = rtReq.getCapacity();
+                    if (target < 1) {
+                        throw new IllegalArgumentException("capacity must be >= 1");
+                    }
+                    int current = (rt.getListRoom() == null) ? 0 : rt.getListRoom().size();
+                    int floor = rt.getFloor() == null ? 0 : rt.getFloor();
+
+                    if (target > current) {
+                        int toAdd = target - current;
+                        for (int i = 0; i < toAdd; i++) {
+                            int nextIdx = nextUnitByFloor.getOrDefault(floor, 0) + 1;
+                            if (nextIdx > 99) {
+                                throw new IllegalArgumentException("Room number per floor cannot exceed 99");
+                            }
+                            String roomId = IdUtil.generateRoomId(existing.getPropertyId(), floor, nextIdx);
+                            nextUnitByFloor.put(floor, nextIdx);
+
+                            Room newRoom = new Room();
+                            newRoom.setRoomId(roomId);
+                            String roomNumberStr = roomId.substring(roomId.lastIndexOf('-') + 1);
+                            newRoom.setName(roomNumberStr); // same convention as createProperty
+                            newRoom.setAvailabilityStatus(1);
+                            newRoom.setActiveRoom(1);
+                            newRoom.setRoomType(rt);
+                            rt.addRoom(newRoom);
+                        }
+                    } else if (target < current) {
+                        int toRemove = current - target;
+                        // Remove rooms with largest numeric suffix first to keep earlier numbers stable
+                        if (rt.getListRoom() != null) {
+                            rt.getListRoom().sort((a, b) -> {
+                                int na = parseRoomNumber(a.getRoomId());
+                                int nb = parseRoomNumber(b.getRoomId());
+                                return Integer.compare(nb, na); // descending
+                            });
+                            for (int i = 0; i < toRemove && !rt.getListRoom().isEmpty(); i++) {
+                                Room r = rt.getListRoom().get(0);
+                                rt.removeRoom(r);
+                            }
+                        }
+                    }
+                    // Sync capacity to actual current size
+                    rt.setCapacity(rt.getListRoom() == null ? 0 : rt.getListRoom().size());
+                }
+            }
+
+            // Recompute total rooms across the property
+            int total = 0;
+            for (RoomType rt : existing.getListRoomType()) {
+                total += (rt.getListRoom() == null ? 0 : rt.getListRoom().size());
+            }
+            existing.setTotalRoom(total);
+        }
+
+        // Touch the updated timestamp explicitly (Hibernate @UpdateTimestamp will also
+        // set it)
+        existing.setUpdatedDate(LocalDateTime.now());
         Property saved = propertyRepository.save(existing);
         return PropertyMapper.toDetailDto(saved);
     }
@@ -258,7 +497,8 @@ public class PropertyRestService {
             throw new IllegalArgumentException("Rooms list cannot be empty for update");
         }
 
-        // Find existing room type by name and floor; if not found, create it (ensuring no duplicate name on same floor)
+        // Find existing room type by name and floor; if not found, create it (ensuring
+        // no duplicate name on same floor)
         RoomType targetRt = null;
         for (RoomType rt : existing.getListRoomType()) {
             int f = rt.getFloor() != null ? rt.getFloor() : 0;
@@ -272,12 +512,14 @@ public class PropertyRestService {
                     .anyMatch(rt -> (rt.getFloor() != null ? rt.getFloor() : 0) == floor
                             && rt.getName().equalsIgnoreCase(req.getName()));
             if (duplicate) {
-                throw new IllegalArgumentException("Duplicate room type '" + req.getName() + "' on floor " + floor + " is not allowed");
+                throw new IllegalArgumentException(
+                        "Duplicate room type '" + req.getName() + "' on floor " + floor + " is not allowed");
             }
             String generatedRtId = IdUtil.generateRoomTypeId(propertyId, req.getName(), floor);
             if (req.getRoomTypeId() != null && !req.getRoomTypeId().isBlank()
                     && !req.getRoomTypeId().equals(generatedRtId)) {
-                throw new IllegalArgumentException("roomTypeId mismatch: expected '" + generatedRtId + "' but got '" + req.getRoomTypeId() + "'");
+                throw new IllegalArgumentException(
+                        "roomTypeId mismatch: expected '" + generatedRtId + "' but got '" + req.getRoomTypeId() + "'");
             }
             targetRt = new RoomType();
             targetRt.setRoomTypeId(generatedRtId);
@@ -294,17 +536,20 @@ public class PropertyRestService {
         // Build per-floor next index from existing rooms across the property
         Map<Integer, Integer> nextUnitByFloor = new HashMap<>();
         for (RoomType rt : existing.getListRoomType()) {
-            if (rt.getListRoom() == null) continue;
+            if (rt.getListRoom() == null)
+                continue;
             for (Room r : rt.getListRoom()) {
                 String id = r.getRoomId();
-                if (id == null) continue;
+                if (id == null)
+                    continue;
                 try {
                     String numStr = id.substring(id.lastIndexOf('-') + 1);
                     int num = Integer.parseInt(numStr);
                     int f = num / 100;
                     int idx = num - f * 100;
                     nextUnitByFloor.merge(f, idx, Math::max);
-                } catch (Exception ignore) {}
+                } catch (Exception ignore) {
+                }
             }
         }
 
@@ -317,7 +562,8 @@ public class PropertyRestService {
             String expectedRoomId = IdUtil.generateRoomId(propertyId, floor, nextIdx);
             if (rr.getRoomId() != null && !rr.getRoomId().isBlank()
                     && !rr.getRoomId().equals(expectedRoomId)) {
-                throw new IllegalArgumentException("roomId mismatch for update: expected '" + expectedRoomId + "' but got '" + rr.getRoomId() + "'");
+                throw new IllegalArgumentException("roomId mismatch for update: expected '" + expectedRoomId
+                        + "' but got '" + rr.getRoomId() + "'");
             }
             String roomId = expectedRoomId;
             nextUnitByFloor.put(floor, nextIdx);
@@ -342,9 +588,14 @@ public class PropertyRestService {
     }
 
     public RoomDetailDto addMaintenance(RoomUpdateRequest request) {
+        // Validate the request is not null
+        if (request == null) {
+            throw new IllegalArgumentException("Request cannot be null");
+        }
+
         // Validate and parse request data
         String roomTypeId = request.getRoomTypeId();
-        
+
         if (roomTypeId == null || roomTypeId.isBlank()) {
             throw new IllegalArgumentException("roomTypeId cannot be blank");
         }
@@ -368,9 +619,10 @@ public class PropertyRestService {
             throw new IllegalArgumentException("Maintenance start and end dates cannot be null");
         } else if (maintenanceEnd.isBefore(maintenanceStart)) {
             throw new IllegalArgumentException("Maintenance end date cannot be before start date");
-        } 
-        
-        // Ensure maintenance dates are not in the past (the same day is allowed but after the current time)
+        }
+
+        // Ensure maintenance dates are not in the past (the same day is allowed but
+        // after the current time)
         if (maintenanceStart.isBefore(LocalDateTime.now()) || maintenanceEnd.isBefore(LocalDateTime.now())) {
             throw new IllegalArgumentException("Maintenance start and end date cannot be in the past");
         }
@@ -386,6 +638,19 @@ public class PropertyRestService {
                 .filter(r -> r.getRoomId().equals(roomId))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("Room not found: " + roomId));
+
+        // Guard: maintenance must not collide with existing bookings on this room (statuses other than canceled)
+        if (room.getBookings() != null) {
+            for (AccommodationBooking b : room.getBookings()) {
+                Integer st = b.getStatus();
+                if (st != null && st == 2) continue; // ignore canceled
+                if (b.getCheckInDate() != null && b.getCheckOutDate() != null) {
+                    if (DateUtil.isOverlapping(b.getCheckInDate(), b.getCheckOutDate(), maintenanceStart, maintenanceEnd)) {
+                        throw new IllegalArgumentException("Maintenance window overlaps an existing booking for this room");
+                    }
+                }
+            }
+        }
 
         // Update room maintenance schedule
         room.setMaintenanceStart(maintenanceStart);

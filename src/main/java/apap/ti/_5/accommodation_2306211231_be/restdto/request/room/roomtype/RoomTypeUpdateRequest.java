@@ -9,10 +9,12 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class RoomTypeUpdateRequest {
-    @NotBlank private String name;
+    @NotBlank
+    private String roomTypeId; // required to identify which RoomType to update
+    private String name; // optional, ignored in Property-level update
     @NotNull @Min(0) private Integer price;
     private String description;
     @NotNull @Min(1) private Integer capacity;
     private String facility;
-    @NotNull @Min(0) private Integer floor;
+    @NotNull @Min(0) private Integer floor; // ignored in Property-level update
 }

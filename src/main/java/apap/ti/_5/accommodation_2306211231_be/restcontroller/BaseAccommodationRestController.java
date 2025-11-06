@@ -12,6 +12,7 @@ import apap.ti._5.accommodation_2306211231_be.restdto.BaseResponseDto;
 import apap.ti._5.accommodation_2306211231_be.restservice.AccommodationBookingRestService;
 import apap.ti._5.accommodation_2306211231_be.restservice.PropertyRestService;
 import apap.ti._5.accommodation_2306211231_be.util.ResponseUtil;
+import apap.ti._5.accommodation_2306211231_be.service.ProvinceService;
 import lombok.RequiredArgsConstructor;
 
 @RestController
@@ -21,6 +22,7 @@ public class BaseAccommodationRestController {
     
     private final PropertyRestService propertyService;
     private final AccommodationBookingRestService bookingService;
+    private final ProvinceService provinceService;
 
     @GetMapping("/")
     public ResponseEntity<BaseResponseDto<Map<String, Long>>> home() {
@@ -32,13 +34,30 @@ public class BaseAccommodationRestController {
                     "totalProperties", totalProperties,
                     "totalBookings", totalBookings
                 ),
-                "Welcome to Travel APAP Accommodation Service API",
+                "[GET] Welcome to Travel APAP Accommodation Service API",
                 HttpStatus.OK
             );
 
         } catch (Exception e) {
             return ResponseUtil.<Map<String, Long>>error(
                 "An error occurred while fetching summary data.",
+                HttpStatus.INTERNAL_SERVER_ERROR
+            );
+        }
+    }
+
+    @GetMapping("/external/province")
+    public ResponseEntity<BaseResponseDto<Map<Integer, String>>> getProvinces() {
+        try {
+            Map<Integer, String> provinces = provinceService.getAll();
+            return ResponseUtil.<Map<Integer, String>>success(
+                provinces,
+                "[GET] List of provinces fetched successfully.",
+                HttpStatus.OK
+            );
+        } catch (Exception e) {
+            return ResponseUtil.<Map<Integer, String>>error(
+                "An error occurred while fetching provinces.",
                 HttpStatus.INTERNAL_SERVER_ERROR
             );
         }

@@ -4,8 +4,8 @@ import apap.ti._5.accommodation_2306211231_be.models.AccommodationBooking;
 import apap.ti._5.accommodation_2306211231_be.restdto.request.accommodationbooking.AccommodationBookingCreateRequest;
 import apap.ti._5.accommodation_2306211231_be.restdto.request.accommodationbooking.AccommodationBookingUpdateRequest;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.accommodationbooking.AccommodationBookingDto;
+import apap.ti._5.accommodation_2306211231_be.util.PhoneUtil;
 
-import java.time.LocalDateTime;
 import java.util.UUID;
 
 public final class AccommodationBookingMapper {
@@ -13,10 +13,24 @@ public final class AccommodationBookingMapper {
 
     public static AccommodationBookingDto toDto(AccommodationBooking b) {
         if (b == null) return null;
+        Integer roomTypePrice = null;
+        String propertyName = null;
+        String roomTypeName = null;
+        String roomName = null;
+        if (b.getRoom() != null) {
+            roomName = b.getRoom().getName();
+            if (b.getRoom().getRoomType() != null) {
+                roomTypeName = b.getRoom().getRoomType().getName();
+                roomTypePrice = b.getRoom().getRoomType().getPrice();
+                if (b.getRoom().getRoomType().getProperty() != null) {
+                    propertyName = b.getRoom().getRoomType().getProperty().getPropertyName();
+                }
+            }
+        }
         return new AccommodationBookingDto(
                 b.getBookingId(),
-                b.getCheckInDate() != null ? b.getCheckInDate().toString() : null,
-                b.getCheckOutDate() != null ? b.getCheckOutDate().toString() : null,
+                b.getCheckInDate(),
+                b.getCheckOutDate(),
                 b.getTotalDays(),
                 b.getTotalPrice(),
                 b.getStatus(),
@@ -28,7 +42,13 @@ public final class AccommodationBookingMapper {
                 b.getRefund(),
                 b.getExtraPay(),
                 b.getCapacity(),
-                b.getRoom() != null ? b.getRoom().getRoomId() : null
+                b.getRoom() != null ? b.getRoom().getRoomId() : null,
+                propertyName,
+                roomTypeName,
+                roomName,
+        roomTypePrice,
+        b.getCreatedDate(),
+        b.getUpdatedDate()
         );
     }
 
@@ -36,15 +56,15 @@ public final class AccommodationBookingMapper {
         if (req == null) return null;
         AccommodationBooking b = new AccommodationBooking();
         b.setBookingId(req.getBookingId());
-        b.setCheckInDate(parse(req.getCheckInDate()));
-        b.setCheckOutDate(parse(req.getCheckOutDate()));
+        b.setCheckInDate(req.getCheckInDate());
+        b.setCheckOutDate(req.getCheckOutDate());
         b.setTotalDays(req.getTotalDays());
         b.setTotalPrice(req.getTotalPrice());
         b.setStatus(req.getStatus());
-        b.setCustomerId(UUID.fromString(req.getCustomerId()));
+        b.setCustomerId(parseUuidOrThrow(req.getCustomerId()));
         b.setCustomerName(req.getCustomerName());
         b.setCustomerEmail(req.getCustomerEmail());
-        b.setCustomerPhone(req.getCustomerPhone());
+        b.setCustomerPhone(PhoneUtil.normalizeOrThrow(req.getCustomerPhone()));
         b.setIsBreakfast(req.getIsBreakfast());
         b.setRefund(req.getRefund());
         b.setExtraPay(req.getExtraPay());
@@ -55,14 +75,14 @@ public final class AccommodationBookingMapper {
 
     public static void updateEntity(AccommodationBooking b, AccommodationBookingUpdateRequest req) {
         if (b == null || req == null) return;
-        b.setCheckInDate(parse(req.getCheckInDate()));
-        b.setCheckOutDate(parse(req.getCheckOutDate()));
+        b.setCheckInDate(req.getCheckInDate());
+        b.setCheckOutDate(req.getCheckOutDate());
         b.setTotalDays(req.getTotalDays());
         b.setTotalPrice(req.getTotalPrice());
         b.setStatus(req.getStatus());
         b.setCustomerName(req.getCustomerName());
         b.setCustomerEmail(req.getCustomerEmail());
-        b.setCustomerPhone(req.getCustomerPhone());
+        b.setCustomerPhone(PhoneUtil.normalizeOrThrow(req.getCustomerPhone()));
         b.setIsBreakfast(req.getIsBreakfast());
         b.setRefund(req.getRefund());
         b.setExtraPay(req.getExtraPay());
@@ -70,8 +90,12 @@ public final class AccommodationBookingMapper {
         // room relation can be changed in service using req.getRoomId()
     }
 
-    private static LocalDateTime parse(String s) {
-        if (s == null || s.isBlank()) return null;
-        return LocalDateTime.parse(s);
+    private static UUID parseUuidOrThrow(String raw) {
+        if (raw == null) throw new IllegalArgumentException("customerId is required");
+        String s = raw.trim();
+        try { return UUID.fromString(s); }
+        catch (IllegalArgumentException ex) {
+            throw new IllegalArgumentException("Invalid customerId UUID format", ex);
+        }
     }
 }

@@ -62,6 +62,12 @@ public class Property {
     @Max(1)
     private Integer activeStatus;
 
+    // profit always starts from 0
+    @Column(name = "profit", nullable = false)
+    @Min(0)
+    @Builder.Default
+    private Integer profit = 0;
+
     @Column(name = "owner_name", nullable = false, length = 255)
     @NotBlank
     private String ownerName;
