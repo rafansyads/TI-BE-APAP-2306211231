@@ -44,10 +44,11 @@ public class AccommodationBooking {
     // 1=payment confirmed
     // 2=canceled
     // 3=refund requested
+    // 4=done
     @Column(name = "status", nullable = false)
     @NotNull
     @Min(0)
-    @Max(3)
+    @Max(4)
     private Integer status;
 
     @Column(name = "customer_id", nullable = false)

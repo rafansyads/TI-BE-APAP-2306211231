@@ -1,31 +1,33 @@
 package apap.ti._5.accommodation_2306211231_be.restservice;
 
-import apap.ti._5.accommodation_2306211231_be.models.AccommodationBooking;
-import apap.ti._5.accommodation_2306211231_be.models.Property;
-import apap.ti._5.accommodation_2306211231_be.models.Room;
-import apap.ti._5.accommodation_2306211231_be.repository.AccommodationBookingRepository;
-import apap.ti._5.accommodation_2306211231_be.repository.RoomRepository;
-import apap.ti._5.accommodation_2306211231_be.repository.PropertyRepository;
-import apap.ti._5.accommodation_2306211231_be.restdto.request.accommodationbooking.AccommodationBookingCreateRequest;
-import apap.ti._5.accommodation_2306211231_be.restdto.request.accommodationbooking.AccommodationBookingUpdateRequest;
-import apap.ti._5.accommodation_2306211231_be.restdto.response.accommodationbooking.AccommodationBookingDto;
-import apap.ti._5.accommodation_2306211231_be.restmapper.AccommodationBookingMapper;
-import apap.ti._5.accommodation_2306211231_be.util.DateUtil;
-import apap.ti._5.accommodation_2306211231_be.util.IdUtil;
-import apap.ti._5.accommodation_2306211231_be.restdto.response.accommodationbooking.CustomerSummaryDto;
-import lombok.RequiredArgsConstructor;
-
-import org.springframework.stereotype.Service;
-
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import apap.ti._5.accommodation_2306211231_be.models.AccommodationBooking;
+import apap.ti._5.accommodation_2306211231_be.models.Property;
+import apap.ti._5.accommodation_2306211231_be.models.Room;
+import apap.ti._5.accommodation_2306211231_be.repository.AccommodationBookingRepository;
+import apap.ti._5.accommodation_2306211231_be.repository.PropertyRepository;
+import apap.ti._5.accommodation_2306211231_be.repository.RoomRepository;
+import apap.ti._5.accommodation_2306211231_be.restdto.request.accommodationbooking.AccommodationBookingCreateRequest;
+import apap.ti._5.accommodation_2306211231_be.restdto.request.accommodationbooking.AccommodationBookingUpdateRequest;
+import apap.ti._5.accommodation_2306211231_be.restdto.response.accommodationbooking.AccommodationBookingDto;
+import apap.ti._5.accommodation_2306211231_be.restdto.response.accommodationbooking.CustomerSummaryDto;
+import apap.ti._5.accommodation_2306211231_be.restmapper.AccommodationBookingMapper;
+import apap.ti._5.accommodation_2306211231_be.util.DateUtil;
+import apap.ti._5.accommodation_2306211231_be.util.IdUtil;
+import lombok.RequiredArgsConstructor;
 
 @Service
+@Transactional
 @RequiredArgsConstructor
 public class AccommodationBookingRestService {
 
@@ -279,6 +281,20 @@ public class AccommodationBookingRestService {
         AccommodationBooking existing = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new NoSuchElementException("Booking not found with ID: " + bookingId));
 
+        // Enforce rule: Updates are only allowed for status 0 or 1 when there is no pending extraPay/refund
+        int currStatus = existing.getStatus() == null ? 0 : existing.getStatus();
+        int extra = existing.getExtraPay() == null ? 0 : existing.getExtraPay();
+        int refund = existing.getRefund() == null ? 0 : existing.getRefund();
+        if ((currStatus == 0 || currStatus == 1) && (extra != 0 || refund != 0)) {
+            throw new IllegalStateException("Booking cannot be updated while there is pending extra payment or refund");
+        }
+        if (currStatus == 2 || currStatus == 4) {
+            throw new IllegalStateException("Booking with status 2 or 4 cannot be updated");
+        }
+        if (currStatus == 3) {
+            throw new IllegalStateException("Booking in refund state (3) cannot be updated");
+        }
+
         // Customer identity must not change
         if (existing.getCustomerId() != null && request.getCustomerId() != null) {
             java.util.UUID reqCustId = java.util.UUID.fromString(request.getCustomerId().trim());
@@ -311,8 +327,14 @@ public class AccommodationBookingRestService {
             throw new IllegalArgumentException("propertyName does not match the target Property");
         }
 
-        // Apply core field updates
-        AccommodationBookingMapper.updateEntity(existing, request);
+    // Snapshot previous values for comparison before applying updates
+    LocalDateTime prevCheckIn = existing.getCheckInDate();
+    LocalDateTime prevCheckOut = existing.getCheckOutDate();
+    Boolean prevBreakfast = existing.getIsBreakfast();
+    Integer previousTotal = existing.getTotalPrice() == null ? 0 : existing.getTotalPrice();
+
+    // Apply core field updates from request
+    AccommodationBookingMapper.updateEntity(existing, request);
 
         // Normalize and validate the booking window
         LocalDateTime requestedIn = existing.getCheckInDate();
@@ -368,42 +390,58 @@ public class AccommodationBookingRestService {
         int breakfastPerDay = Boolean.TRUE.equals(existing.getIsBreakfast()) ? 50_000 : 0;
         int expectedTotal = days * (basePrice + breakfastPerDay);
 
-        Integer prevStatus = existing.getStatus() == null ? 0 : existing.getStatus();
-        int previousTotal = existing.getTotalPrice() == null ? 0 : existing.getTotalPrice();
+        Integer prevStatus = currStatus;
 
-        // Apply new total price
-        existing.setTotalPrice(expectedTotal);
+        // Determine if the change is only due to RoomType.price (dates/breakfast unchanged)
+        boolean datesUnchanged = (prevCheckIn != null && prevCheckOut != null
+                && prevCheckIn.equals(existing.getCheckInDate())
+                && prevCheckOut.equals(existing.getCheckOutDate()));
+        boolean breakfastUnchanged = java.util.Objects.equals(prevBreakfast, existing.getIsBreakfast());
 
-        // Status transitions per spec when booking was already paid
+        // Apply per-status rules
+        // New rule: do not change totalPrice on update; keep as-is until next payment/refund action.
+        existing.setTotalPrice(previousTotal);
+
+        int delta = expectedTotal - previousTotal;
         if (prevStatus == 1) {
-            if (expectedTotal > previousTotal) {
-                // price increased -> extraPay and revert to waiting (0)
-                existing.setExtraPay(expectedTotal - previousTotal);
-                existing.setStatus(0);
-                // profit unchanged until extraPay settled
-            } else if (expectedTotal < previousTotal) {
-                // price decreased -> refund and switch to request refund (3)
-                existing.setRefund(previousTotal - expectedTotal);
-                existing.setStatus(3);
-                // profit unchanged until refund processed/done
-            } else {
-                // unchanged price -> keep status 1
-                existing.setStatus(1);
-                existing.setExtraPay(0);
-                // keep existing refund as-is (should be 0)
+            if (!(datesUnchanged && breakfastUnchanged)) {
+                if (delta > 0) {
+                    // Longer stay (more expensive): require extraPay, revert to waiting, and remove previously recognized income
+                    existing.setExtraPay(delta);
+                    existing.setRefund(0);
+                    existing.setStatus(0);
+                    // Reset property's profit by removing previous recognition
+                    if (room.getRoomType() != null && room.getRoomType().getProperty() != null) {
+                        Property prop = room.getRoomType().getProperty();
+                        int profit = prop.getProfit() == null ? 0 : prop.getProfit();
+                        prop.setProfit(Math.max(0, profit - previousTotal));
+                        propertyRepository.save(prop);
+                    }
+                } else if (delta < 0) {
+                    // Shorter stay (cheaper): set refund and go to refund-requested; do not change income yet
+                    existing.setRefund(-delta);
+                    existing.setExtraPay(0);
+                    existing.setStatus(3);
+                } else {
+                    // No change in baseline
+                    existing.setExtraPay(0);
+                    existing.setRefund(0);
+                    existing.setStatus(1);
+                }
             }
         } else if (prevStatus == 0) {
-            // still waiting; just reset extraPay unless explicitly set
-            // If client toggled breakfast or dates making total change, profit still unaffected
-            if (existing.getExtraPay() == null) existing.setExtraPay(0);
-            existing.setStatus(0);
-        } else if (prevStatus == 3) {
-            // In refund state; recompute refund relative to previous paid amount
-            if (expectedTotal < previousTotal) {
-                existing.setRefund(previousTotal - expectedTotal);
+            // Waiting: set deltas relative to prior baseline
+            if (delta > 0) {
+                existing.setExtraPay(delta);
+                existing.setRefund(0);
+            } else if (delta < 0) {
+                existing.setRefund(-delta);
+                existing.setExtraPay(0);
+            } else {
+                existing.setExtraPay(0);
+                existing.setRefund(0);
             }
-            existing.setStatus(3);
-            existing.setExtraPay(0);
+            existing.setStatus(0);
         }
 
         // Assign room
@@ -425,20 +463,29 @@ public class AccommodationBookingRestService {
             throw new IllegalStateException("Only bookings with status 0 (waiting for payment) can be paid");
         }
 
-        // Update property profit: add totalPrice and any extraPay, then reset extraPay to 0
+        // Apply stored adjustments (extraPay/refund) at payment time to the original total
         Room room = booking.getRoom();
         if (room == null || room.getRoomType() == null || room.getRoomType().getProperty() == null) {
             throw new IllegalStateException("Booking is not associated with a property");
         }
-        Property property = room.getRoomType().getProperty();
-        int delta = (booking.getTotalPrice() != null ? booking.getTotalPrice() : 0)
-                + (booking.getExtraPay() != null ? booking.getExtraPay() : 0);
-        property.setProfit((property.getProfit() != null ? property.getProfit() : 0) + delta);
-        booking.setExtraPay(0);
-        booking.setStatus(1); // payment confirmed
+        int oldTotal = booking.getTotalPrice() == null ? 0 : booking.getTotalPrice();
+        int extraPay = booking.getExtraPay() == null ? 0 : booking.getExtraPay();
+        int refund = booking.getRefund() == null ? 0 : booking.getRefund();
+        // At payment, refund reduces the amount to be paid
+        int payTotal = oldTotal + extraPay - refund;
+        if (payTotal < 0) payTotal = 0;
+        booking.setTotalPrice(payTotal);
 
-        // Persist both entities
+        // Add profit equal to the new total price
+        Property property = room.getRoomType().getProperty();
+        int profit = property.getProfit() == null ? 0 : property.getProfit();
+        property.setProfit(profit + payTotal);
         propertyRepository.save(property);
+
+        // Reset adjustments after applying
+        booking.setExtraPay(0);
+        booking.setRefund(0);
+        booking.setStatus(1); // payment confirmed
         booking = bookingRepository.save(booking);
         return AccommodationBookingMapper.toDto(booking);
     }
@@ -462,25 +509,21 @@ public class AccommodationBookingRestService {
         var property = room.getRoomType().getProperty();
         int profit = property.getProfit() != null ? property.getProfit() : 0;
         int totalPrice = booking.getTotalPrice() != null ? booking.getTotalPrice() : 0;
-        int extraPay = booking.getExtraPay() != null ? booking.getExtraPay() : 0;
-        int refund = booking.getRefund() != null ? booking.getRefund() : 0;
 
         if (status == 0) {
-            // default: only change status to canceled
-            // special case from spec: if extraPay exists, profit = profit - totalPrice + extraPay
-            if (extraPay > 0) {
-                profit = profit - totalPrice + extraPay;
-            }
+            // No income recognized yet; just cancel
         } else if (status == 1) {
-            // paid booking canceled -> subtract current total price
             profit = profit - totalPrice;
         } else if (status == 3) {
-            // refund state canceled -> subtract total price and refund
-            profit = profit - totalPrice - refund;
+            // Income previously recognized; pending refund that would reduce later
+            // On cancel, remove recognized income fully
+            profit = profit - totalPrice;
         }
 
         property.setProfit(Math.max(0, profit));
         booking.setStatus(2); // canceled
+        booking.setExtraPay(0);
+        booking.setRefund(0);
 
         propertyRepository.save(property);
         booking = bookingRepository.save(booking);
@@ -494,51 +537,84 @@ public class AccommodationBookingRestService {
         AccommodationBooking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new NoSuchElementException("Booking not found with ID: " + bookingId));
 
-        if (booking.getStatus() == null || booking.getStatus() != 1) {
-            throw new IllegalStateException("Refund can only be processed for bookings with status 1 (paid)");
+        // Allow refund action when a refund amount exists (>0). Typically status 3, but tolerate 1 as well.
+        Integer st = booking.getStatus();
+        if (st == null) st = 0;
+        if (!(st == 1 || st == 3)) {
+            throw new IllegalStateException("Refund can only be processed for bookings with status 1 or 3");
         }
         int refund = booking.getRefund() != null ? booking.getRefund() : 0;
         if (refund <= 0) {
             throw new IllegalArgumentException("Refund amount must be greater than 0");
         }
-
+        // Reduce property's profit by refund amount and reduce booking's total; status returns to 1
         Room room = booking.getRoom();
         if (room == null || room.getRoomType() == null || room.getRoomType().getProperty() == null) {
             throw new IllegalStateException("Booking is not associated with a property");
         }
-        var property = room.getRoomType().getProperty();
-        int profit = property.getProfit() != null ? property.getProfit() : 0;
-        profit = profit - refund;
-        property.setProfit(Math.max(0, profit));
-
-        booking.setStatus(3); // refund requested/completed
-
+        Property property = room.getRoomType().getProperty();
+        int profit = property.getProfit() == null ? 0 : property.getProfit();
+        property.setProfit(Math.max(0, profit - refund));
         propertyRepository.save(property);
+        int newTotal = Math.max(0, (booking.getTotalPrice() == null ? 0 : booking.getTotalPrice()) - refund);
+        booking.setTotalPrice(newTotal);
+        booking.setRefund(0);
+        booking.setStatus(1); // after processing refund, back to paid
         booking = bookingRepository.save(booking);
         return AccommodationBookingMapper.toDto(booking);
     }
 
     public Map<String, Object> getBookingChart(Integer month, Integer year) {
-        // For now, profit is cumulative on Property; we expose current profit per property.
-        // month/year are accepted for future use and echoed back to the client.
+        if (month == null || year == null) {
+            throw new IllegalArgumentException("month and year are required");
+        }
+
+        // Build per-property monthly income from bookings where check-in month/year match
         var properties = propertyRepository.findByDeletedAtIsNull();
+        java.util.Map<String, Integer> incomeByProperty = new java.util.LinkedHashMap<>();
+        java.util.Map<String, Property> propById = new java.util.LinkedHashMap<>();
+        for (var p : properties) {
+            incomeByProperty.put(p.getPropertyId(), 0);
+            propById.put(p.getPropertyId(), p);
+        }
 
-        List<String> labels = properties.stream()
-                .map(p -> p.getPropertyName())
-                .toList();
-        List<Integer> data = properties.stream()
-                .map(p -> p.getProfit() == null ? 0 : p.getProfit())
-                .toList();
+        var bookings = bookingRepository.findAll();
+        for (AccommodationBooking b : bookings) {
+            if (b.getRoom() == null || b.getRoom().getRoomType() == null || b.getRoom().getRoomType().getProperty() == null)
+                continue;
+            var prop = b.getRoom().getRoomType().getProperty();
+            var checkIn = b.getCheckInDate();
+            if (checkIn == null) continue;
+            if (checkIn.getYear() != year) continue;
+            if (checkIn.getMonthValue() != month) continue;
 
-        // items array with property object essentials for FE that prefers full objects on x-axis
-        List<Map<String, Object>> items = properties.stream().map(p -> {
+            int status = b.getStatus() == null ? 0 : b.getStatus();
+            // Recognized income for the month: include paid/done bookings
+            // Exclude 0 (waiting), 2 (canceled). For 3 (refund requested), keep previously recognized total for now.
+            if (status == 1 || status == 4 || status == 3) {
+                int amt = b.getTotalPrice() == null ? 0 : b.getTotalPrice();
+                // If status 3 and refund already set, reflect net if desired; otherwise, keep recognized value
+                // We'll subtract refund only if it has been applied to totalPrice elsewhere (our service does upon refund)
+                incomeByProperty.computeIfPresent(prop.getPropertyId(), (k, v) -> v + amt);
+            }
+        }
+
+        // Prepare labels/data/items aligned
+        List<String> labels = new java.util.ArrayList<>();
+        List<Integer> data = new java.util.ArrayList<>();
+        List<Map<String, Object>> items = new java.util.ArrayList<>();
+        for (var p : properties) {
+            String pid = p.getPropertyId();
+            int income = incomeByProperty.getOrDefault(pid, 0);
+            labels.add(p.getPropertyName());
+            data.add(income);
             Map<String, Object> m = new java.util.HashMap<>();
-            m.put("propertyId", p.getPropertyId());
+            m.put("propertyId", pid);
             m.put("propertyName", p.getPropertyName());
             m.put("type", p.getType());
-            m.put("profit", p.getProfit() == null ? 0 : p.getProfit());
-            return m;
-        }).toList();
+            m.put("profit", income);
+            items.add(m);
+        }
 
         Map<String, Object> result = new java.util.HashMap<>();
         result.put("month", month);
@@ -546,6 +622,8 @@ public class AccommodationBookingRestService {
         result.put("labels", labels);
         result.put("data", data);
         result.put("items", items);
+        // Also provide 'values' alias to support FE expecting {labels, values}
+        result.put("values", data);
         return result;
     }
 
@@ -558,8 +636,7 @@ public class AccommodationBookingRestService {
      */
     public int processCheckInToday() {
         LocalDateTime todayStart = ZonedDateTime.now(ZoneId.of("Asia/Jakarta")).toLocalDate().atStartOfDay();
-        LocalDateTime todayCheckInAnchor = DateUtil.normalizeCheckIn(todayStart);
-        // We'll consider bookings whose normalized check-in date matches today's check-in anchor date
+        LocalDateTime todayCheckInAnchor = DateUtil.normalizeCheckIn(todayStart); // typically 14:00 on today
         var all = bookingRepository.findAll();
         int changed = 0;
         for (AccommodationBooking b : all) {
@@ -571,23 +648,29 @@ public class AccommodationBookingRestService {
                     b.setStatus(4); // done
                     bookingRepository.save(b);
                     changed++;
-                } else if (st == 0 && (b.getExtraPay() != null && b.getExtraPay() > 0)) {
-                    // auto-cancel unpaid extra pay cases using existing cancellation logic
-                    cancelBooking(b.getBookingId());
-                    changed++;
                 } else if (st == 3) {
-                    // reduce profit by refund and mark done
-                    Room room = b.getRoom();
-                    if (room != null && room.getRoomType() != null && room.getRoomType().getProperty() != null) {
-                        Property prop = room.getRoomType().getProperty();
+                    // auto-refund then mark done
+                    Room r = b.getRoom();
+                    if (r != null && r.getRoomType() != null && r.getRoomType().getProperty() != null) {
+                        Property prop = r.getRoomType().getProperty();
                         int profit = prop.getProfit() == null ? 0 : prop.getProfit();
-                        int refund = b.getRefund() == null ? 0 : b.getRefund();
-                        prop.setProfit(Math.max(0, profit - refund));
+                        int ref = b.getRefund() == null ? 0 : b.getRefund();
+                        prop.setProfit(Math.max(0, profit - ref));
                         propertyRepository.save(prop);
+                        int newTotal = Math.max(0, (b.getTotalPrice() == null ? 0 : b.getTotalPrice()) - ref);
+                        b.setTotalPrice(newTotal);
+                        b.setRefund(0);
                     }
                     b.setStatus(4);
                     bookingRepository.save(b);
                     changed++;
+                } else if (st == 0 || st == 2) {
+                    // cancel unpaid or already canceled
+                    if (st != 2) {
+                        b.setStatus(2);
+                        bookingRepository.save(b);
+                        changed++;
+                    }
                 }
             }
         }

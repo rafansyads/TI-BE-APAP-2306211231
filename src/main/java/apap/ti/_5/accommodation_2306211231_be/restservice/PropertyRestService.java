@@ -1,33 +1,45 @@
 package apap.ti._5.accommodation_2306211231_be.restservice;
 
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Random;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import apap.ti._5.accommodation_2306211231_be.models.AccommodationBooking;
 import apap.ti._5.accommodation_2306211231_be.models.Property;
 import apap.ti._5.accommodation_2306211231_be.models.Room;
 import apap.ti._5.accommodation_2306211231_be.models.RoomType;
+import apap.ti._5.accommodation_2306211231_be.repository.AccommodationBookingRepository;
 import apap.ti._5.accommodation_2306211231_be.repository.PropertyRepository;
 import apap.ti._5.accommodation_2306211231_be.repository.RoomRepository;
 import apap.ti._5.accommodation_2306211231_be.repository.RoomTypeRepository;
 import apap.ti._5.accommodation_2306211231_be.restdto.request.property.PropertyCreateRequest;
+import apap.ti._5.accommodation_2306211231_be.restdto.request.property.PropertyUpdateRequest;
 import apap.ti._5.accommodation_2306211231_be.restdto.request.room.RoomCreateRequest;
 import apap.ti._5.accommodation_2306211231_be.restdto.request.room.RoomUpdateRequest;
 import apap.ti._5.accommodation_2306211231_be.restdto.request.room.roomtype.RoomTypeCreateRequest;
-import apap.ti._5.accommodation_2306211231_be.restdto.request.property.PropertyUpdateRequest;
+import apap.ti._5.accommodation_2306211231_be.restdto.response.property.OwnerSummaryDto;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.property.PropertyDetailDto;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.property.PropertySummaryDto;
-import apap.ti._5.accommodation_2306211231_be.restdto.response.property.OwnerSummaryDto;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.room.RoomDetailDto;
 import apap.ti._5.accommodation_2306211231_be.restmapper.PropertyMapper;
-import apap.ti._5.accommodation_2306211231_be.util.DateUtil;
-import apap.ti._5.accommodation_2306211231_be.models.AccommodationBooking;
 import apap.ti._5.accommodation_2306211231_be.restmapper.RoomMapper;
-import apap.ti._5.accommodation_2306211231_be.util.ProvinceUtil;
+import apap.ti._5.accommodation_2306211231_be.util.DateUtil;
 import apap.ti._5.accommodation_2306211231_be.util.IdUtil;
+import apap.ti._5.accommodation_2306211231_be.util.ProvinceUtil;
 import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
-
-import java.util.*;
-import java.util.stream.Collectors;
-import java.time.LocalDateTime;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
@@ -36,6 +48,7 @@ public class PropertyRestService {
     private final PropertyRepository propertyRepository;
     private final RoomRepository roomRepository;
     private final RoomTypeRepository roomTypeRepository;
+    private final AccommodationBookingRepository bookingRepository;
 
     public long count() {
         return propertyRepository.countByDeletedAtIsNull();
@@ -411,6 +424,7 @@ public class PropertyRestService {
                 }
                 // Enforce ID immutability: propertyId doesn't change, roomTypeId doesn't change
                 // Update allowed fields: price, description, facility
+                Integer previousPrice = rt.getPrice();
                 if (rtReq.getPrice() != null)
                     rt.setPrice(rtReq.getPrice());
                 if (rtReq.getDescription() != null)
@@ -418,51 +432,49 @@ public class PropertyRestService {
                 if (rtReq.getFacility() != null)
                     rt.setFacility(rtReq.getFacility());
 
-                // Adjust number of rooms to match requested capacity, if provided
+                // If price changed, reflect adjustments on related bookings without changing totalPrice for status 0.
+                Integer newPrice = rt.getPrice();
+                if (previousPrice != null && newPrice != null && !previousPrice.equals(newPrice)) {
+                    int priceDeltaPerNight = newPrice - previousPrice; // integer math
+                    if (rt.getListRoom() != null) {
+                        for (Room r : rt.getListRoom()) {
+                            if (r.getBookings() == null) continue;
+                            for (AccommodationBooking b : r.getBookings()) {
+                                int st = b.getStatus() == null ? 0 : b.getStatus();
+                                if (!(st == 0 || st == 1)) continue; // consider only waiting/paid
+                                int days = b.getTotalDays() == null
+                                        ? DateUtil.computeDays(b.getCheckInDate(), b.getCheckOutDate())
+                                        : b.getTotalDays();
+                                int delta = days * priceDeltaPerNight; // positive -> extraPay, negative -> refund
+
+                                if (st == 0) {
+                                    if (delta > 0) { b.setExtraPay(delta); b.setRefund(0); }
+                                    else if (delta < 0) { b.setRefund(-delta); b.setExtraPay(0); }
+                                    else { b.setExtraPay(0); b.setRefund(0); }
+                                    // keep status 0 and totalPrice unchanged
+                                } else if (st == 1) {
+                                    if (delta > 0) {
+                                        // need extra payment; revert to waiting
+                                        b.setExtraPay(delta); b.setRefund(0); b.setStatus(0);
+                                    } else if (delta < 0) {
+                                        // refund scenario; go to request-refund
+                                        b.setRefund(-delta); b.setExtraPay(0); b.setStatus(3);
+                                    } else {
+                                        b.setExtraPay(0); b.setRefund(0);
+                                    }
+                                    // do not mutate totalPrice here; apply at payment/refund processing time
+                                }
+                                bookingRepository.save(b);
+                            }
+                        }
+                    }
+                }
+
+                // Capacity here means 'per-room capacity', not the number of rooms; do not change units
                 if (rtReq.getCapacity() != null) {
-                    int target = rtReq.getCapacity();
-                    if (target < 1) {
-                        throw new IllegalArgumentException("capacity must be >= 1");
-                    }
-                    int current = (rt.getListRoom() == null) ? 0 : rt.getListRoom().size();
-                    int floor = rt.getFloor() == null ? 0 : rt.getFloor();
-
-                    if (target > current) {
-                        int toAdd = target - current;
-                        for (int i = 0; i < toAdd; i++) {
-                            int nextIdx = nextUnitByFloor.getOrDefault(floor, 0) + 1;
-                            if (nextIdx > 99) {
-                                throw new IllegalArgumentException("Room number per floor cannot exceed 99");
-                            }
-                            String roomId = IdUtil.generateRoomId(existing.getPropertyId(), floor, nextIdx);
-                            nextUnitByFloor.put(floor, nextIdx);
-
-                            Room newRoom = new Room();
-                            newRoom.setRoomId(roomId);
-                            String roomNumberStr = roomId.substring(roomId.lastIndexOf('-') + 1);
-                            newRoom.setName(roomNumberStr); // same convention as createProperty
-                            newRoom.setAvailabilityStatus(1);
-                            newRoom.setActiveRoom(1);
-                            newRoom.setRoomType(rt);
-                            rt.addRoom(newRoom);
-                        }
-                    } else if (target < current) {
-                        int toRemove = current - target;
-                        // Remove rooms with largest numeric suffix first to keep earlier numbers stable
-                        if (rt.getListRoom() != null) {
-                            rt.getListRoom().sort((a, b) -> {
-                                int na = parseRoomNumber(a.getRoomId());
-                                int nb = parseRoomNumber(b.getRoomId());
-                                return Integer.compare(nb, na); // descending
-                            });
-                            for (int i = 0; i < toRemove && !rt.getListRoom().isEmpty(); i++) {
-                                Room r = rt.getListRoom().get(0);
-                                rt.removeRoom(r);
-                            }
-                        }
-                    }
-                    // Sync capacity to actual current size
-                    rt.setCapacity(rt.getListRoom() == null ? 0 : rt.getListRoom().size());
+                    int cap = rtReq.getCapacity();
+                    if (cap < 1) throw new IllegalArgumentException("capacity must be >= 1");
+                    rt.setCapacity(cap);
                 }
             }
 

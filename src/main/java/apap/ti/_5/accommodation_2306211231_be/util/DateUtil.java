@@ -21,14 +21,19 @@ public final class DateUtil {
     public static LocalDateTime normalizeCheckIn(LocalDateTime dt) {
         if (dt == null) return null;
         LocalDate d = dt.toLocalDate();
-        // Always enforce 14:00 check-in regardless of provided time
-        return d.atTime(14, 0);
+        // If 00.00 <= date time < 14.00, then enforce to 14.00
+        // Else 14.00 <= date time <= 23.59 leave as is
+        if (dt.getHour() < 14) {
+            return d.atTime(14, 0);
+        }
+        return dt;
     }
 
     public static LocalDateTime normalizeCheckOut(LocalDateTime dt) {
         if (dt == null) return null;
         LocalDate d = dt.toLocalDate();
         // Always enforce 12:00 check-out regardless of provided time
+        // This is to mark the maximum check-out time
         return d.atTime(12, 0);
     }
 
