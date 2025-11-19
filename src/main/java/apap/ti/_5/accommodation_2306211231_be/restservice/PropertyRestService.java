@@ -717,3 +717,5 @@ public class PropertyRestService {
                 .mapToInt(IdUtil::extractPropertyCounter)
                 .max().orElse(0);
         return max + 1;
+    }
+}
