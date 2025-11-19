@@ -24,7 +24,7 @@ ENV SPRING_PROFILES_ACTIVE=prod
 COPY --from=build /app/build/libs/*.jar app.jar
 
 # Expose port
-EXPOSE 8080
+EXPOSE 8082
 
 # Run the application
 ENTRYPOINT ["java", "-jar", "app.jar"]

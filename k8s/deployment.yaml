@@ -17,7 +17,7 @@ spec:
         - name: springboot-container
           image: rafansyadsui/travel-apap-accommodation-be:REPLACE_ME_TAG
           ports:
-            - containerPort: 8080
+            - containerPort: 8082
           env:
             - name: DATABASE_URL_PROD_1
               valueFrom:
