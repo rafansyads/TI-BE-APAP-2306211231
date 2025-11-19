@@ -24,9 +24,9 @@ public class RoomTypeRestService {
         return roomTypeRepository.findById(roomTypeId);
     }
 
-    public List<RoomType> getByPropertyId(String propertyId) {
-        throw new UnsupportedOperationException("Not implemented yet");
-    }
+    // public List<RoomType> getByPropertyId(String propertyId) {
+    //     throw new UnsupportedOperationException("Not implemented yet");
+    // }
 
     // DTO helpers (to be implemented later)
     public RoomTypeDetailDto getDetailDto(String roomTypeId) {
@@ -40,15 +40,15 @@ public class RoomTypeRestService {
         );
     }
 
-    public List<RoomTypeSummaryDto> getSummariesByProperty(String propertyId) {
-        throw new UnsupportedOperationException("Not implemented yet");
-    }
+    // public List<RoomTypeSummaryDto> getSummariesByProperty(String propertyId) {
+    //     throw new UnsupportedOperationException("Not implemented yet");
+    // }
 
-    public RoomTypeDetailDto create(RoomTypeCreateRequest request) {
-        throw new UnsupportedOperationException("Not implemented yet");
-    }
+    // public RoomTypeDetailDto create(RoomTypeCreateRequest request) {
+    //     throw new UnsupportedOperationException("Not implemented yet");
+    // }
 
-    public RoomTypeDetailDto update(String roomTypeId, RoomTypeUpdateRequest request) {
-        throw new UnsupportedOperationException("Not implemented yet");
-    }
+    // public RoomTypeDetailDto update(String roomTypeId, RoomTypeUpdateRequest request) {
+    //     throw new UnsupportedOperationException("Not implemented yet");
+    // }
 }

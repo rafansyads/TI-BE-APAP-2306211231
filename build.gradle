@@ -80,8 +80,8 @@ tasks.named('jacocoTestCoverageVerification', JacocoCoverageVerification).config
 			limit {
 				counter = 'INSTRUCTION'
 				value = 'COVEREDRATIO'
-				// Keep threshold at 75% after adding more integration tests
-				minimum = 0.75
+				// Keep threshold at 80% after adding more integration tests
+				minimum = 0.80
 			}
 		}
 	}

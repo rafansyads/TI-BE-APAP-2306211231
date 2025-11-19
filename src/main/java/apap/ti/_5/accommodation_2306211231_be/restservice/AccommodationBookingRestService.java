@@ -56,13 +56,13 @@ public class AccommodationBookingRestService {
         return bookingRepository.save(booking);
     }
 
-    public AccommodationBooking updateBooking(String bookingId, AccommodationBooking booking) {
-        throw new UnsupportedOperationException("Not implemented yet");
-    }
+    // public AccommodationBooking updateBooking(String bookingId, AccommodationBooking booking) {
+    //     throw new UnsupportedOperationException("Not implemented yet");
+    // }
 
-    public void deleteBooking(String bookingId) {
-        throw new UnsupportedOperationException("Not implemented yet");
-    }
+    // public void deleteBooking(String bookingId) {
+    //     throw new UnsupportedOperationException("Not implemented yet");
+    // }
 
     // DTO-based method signatures for controllers (stubs)
     public List<AccommodationBookingDto> getAllBookingsDto() {
@@ -72,6 +72,9 @@ public class AccommodationBookingRestService {
     }
 
     public AccommodationBookingDto getBookingDtoById(String bookingId) {
+        if (bookingId == null || bookingId.isBlank()) {
+            throw new IllegalArgumentException("bookingId is required");
+        }
         return getBookingById(bookingId)
                 .map(AccommodationBookingMapper::toDto)
                 .orElseThrow(() -> new NoSuchElementException("Booking not found with ID: " + bookingId));

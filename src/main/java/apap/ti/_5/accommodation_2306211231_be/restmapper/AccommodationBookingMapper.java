@@ -17,6 +17,9 @@ public final class AccommodationBookingMapper {
         String propertyName = null;
         String roomTypeName = null;
         String roomName = null;
+        // Normalize monetary nullable fields to 0 for API consistency
+        Integer refund = b.getRefund() == null ? 0 : b.getRefund();
+        Integer extraPay = b.getExtraPay() == null ? 0 : b.getExtraPay();
         if (b.getRoom() != null) {
             roomName = b.getRoom().getName();
             if (b.getRoom().getRoomType() != null) {
@@ -39,8 +42,8 @@ public final class AccommodationBookingMapper {
                 b.getCustomerEmail(),
                 b.getCustomerPhone(),
                 b.getIsBreakfast(),
-                b.getRefund(),
-                b.getExtraPay(),
+                refund,
+                extraPay,
                 b.getCapacity(),
                 b.getRoom() != null ? b.getRoom().getRoomId() : null,
                 propertyName,

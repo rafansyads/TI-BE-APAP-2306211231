@@ -67,22 +67,22 @@ public class PropertyRestService {
         return propertyRepository.save(property);
     }
 
-    public Property updateProperty(String propertyId, Property property) {
-        throw new UnsupportedOperationException("Not implemented yet");
-    }
+    // public Property updateProperty(String propertyId, Property property) {
+    //     throw new UnsupportedOperationException("Not implemented yet");
+    // }
 
-    public void deleteProperty(String propertyId) {
-        throw new UnsupportedOperationException("Not implemented yet");
-    }
+    // public void deleteProperty(String propertyId) {
+    //     throw new UnsupportedOperationException("Not implemented yet");
+    // }
 
-    // Room & RoomType placeholders to demonstrate repository availability
-    public List<Room> getRoomsByProperty(String propertyId) {
-        throw new UnsupportedOperationException("Not implemented yet");
-    }
+    // // Room & RoomType placeholders to demonstrate repository availability
+    // public List<Room> getRoomsByProperty(String propertyId) {
+    //     throw new UnsupportedOperationException("Not implemented yet");
+    // }
 
-    public List<RoomType> getRoomTypesByProperty(String propertyId) {
-        throw new UnsupportedOperationException("Not implemented yet");
-    }
+    // public List<RoomType> getRoomTypesByProperty(String propertyId) {
+    //     throw new UnsupportedOperationException("Not implemented yet");
+    // }
 
     // DTO-based methods for controllers
     public List<PropertySummaryDto> getAllPropertiesDto() {
@@ -339,18 +339,18 @@ public class PropertyRestService {
         return LocalDateTime.parse(s);
     }
 
-    private static int parseRoomNumber(String roomId) {
-        if (roomId == null)
-            return -1;
-        try {
-            String numStr = roomId.substring(roomId.lastIndexOf('-') + 1);
-            return Integer.parseInt(numStr);
-        } catch (NumberFormatException e) {
-            return -1;
-        } catch (Exception ignore) {
-            throw new UnknownError("Failed to parse room number from roomId: " + roomId);
-        }
-    }
+    // private static int parseRoomNumber(String roomId) {
+    //     if (roomId == null)
+    //         return -1;
+    //     try {
+    //         String numStr = roomId.substring(roomId.lastIndexOf('-') + 1);
+    //         return Integer.parseInt(numStr);
+    //     } catch (NumberFormatException e) {
+    //         return -1;
+    //     } catch (Exception ignore) {
+    //         throw new UnknownError("Failed to parse room number from roomId: " + roomId);
+    //     }
+    // }
 
     public PropertyDetailDto updateProperty(String propertyId, PropertyUpdateRequest request) {
         if (request == null) {
@@ -717,5 +717,3 @@ public class PropertyRestService {
                 .mapToInt(IdUtil::extractPropertyCounter)
                 .max().orElse(0);
         return max + 1;
-    }
-}
