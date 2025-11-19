@@ -31,6 +31,6 @@ spring:
     allow-circular-references: true
 
 server:
-  port: ${SERVER_PORT_1:8080}
+  port: ${SERVER_PORT_1:8082}
   servlet:
     context-path: /api

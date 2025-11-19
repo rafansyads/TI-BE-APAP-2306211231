@@ -6,14 +6,15 @@ metadata:
   annotations:
     kubernetes.io/ingress.class: traefik
 spec:
+  # ingressClassName: traefik
   rules:
     - host: 2306211231-be.hafizmuh.site
       http:
         paths:
-          - path: /
+          - path: /api
             pathType: Prefix
             backend:
               service:
-                name: travel-apap-accommodation-service
+                name: travel-apap-accommodation-be-service
                 port:
                   number: 80
