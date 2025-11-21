@@ -50,7 +50,10 @@ jobs:
     needs: build
 
     steps:
-      - name: Download artifacts
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: (optional) Download artifacts
         uses: actions/download-artifact@v4
         with:
           name: build-files
@@ -58,11 +61,12 @@ jobs:
       - name: Login into Docker Hub
         run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
-      - name: Build Docker image
-        run: docker build -t $DOCKER_IMAGE_NAME:$IMAGE_TAG .
+      - name: Build Docker image (multi-stage Dockerfile)
+        run: |
+          docker build -f ./Dockerfile --no-cache --progress=plain -t "$DOCKER_IMAGE_NAME:$IMAGE_TAG" .
 
       - name: Push Docker image
-        run: docker push $DOCKER_IMAGE_NAME:$IMAGE_TAG
+        run: docker push "$DOCKER_IMAGE_NAME:$IMAGE_TAG"
 
 
   deploy:
