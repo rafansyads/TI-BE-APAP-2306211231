@@ -8,8 +8,8 @@ import apap.ti._5.accommodation_2306211231_be.restdto.request.accommodationbooki
 import apap.ti._5.accommodation_2306211231_be.restdto.request.accommodationbooking.AccommodationBookingRefundRequest;
 import apap.ti._5.accommodation_2306211231_be.restdto.request.accommodationbooking.AccommodationBookingUpdateRequest;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.accommodationbooking.AccommodationBookingDto;
+import apap.ti._5.accommodation_2306211231_be.restdto.response.profile.CustomerSummaryDto;
 import apap.ti._5.accommodation_2306211231_be.restservice.AccommodationBookingRestService;
-import apap.ti._5.accommodation_2306211231_be.restdto.response.accommodationbooking.CustomerSummaryDto;
 import apap.ti._5.accommodation_2306211231_be.util.ResponseUtil;
 import lombok.RequiredArgsConstructor;
 

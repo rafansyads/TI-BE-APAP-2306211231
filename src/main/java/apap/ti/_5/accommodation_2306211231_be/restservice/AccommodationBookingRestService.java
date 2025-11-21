@@ -20,7 +20,7 @@ import apap.ti._5.accommodation_2306211231_be.repository.RoomRepository;
 import apap.ti._5.accommodation_2306211231_be.restdto.request.accommodationbooking.AccommodationBookingCreateRequest;
 import apap.ti._5.accommodation_2306211231_be.restdto.request.accommodationbooking.AccommodationBookingUpdateRequest;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.accommodationbooking.AccommodationBookingDto;
-import apap.ti._5.accommodation_2306211231_be.restdto.response.accommodationbooking.CustomerSummaryDto;
+import apap.ti._5.accommodation_2306211231_be.restdto.response.profile.CustomerSummaryDto;
 import apap.ti._5.accommodation_2306211231_be.restmapper.AccommodationBookingMapper;
 import apap.ti._5.accommodation_2306211231_be.util.DateUtil;
 import apap.ti._5.accommodation_2306211231_be.util.IdUtil;

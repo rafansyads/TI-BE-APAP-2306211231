@@ -5,3 +5,15 @@ spring:
     url: ${DATABASE_URL_PROD_1}
     username: ${DATABASE_USERNAME}
     password: ${DATABASE_PASSWORD}
+
+# Optional external backend service base URLs (modular)
+# Define as:
+# backend:
+#   services:
+#     backend2: https://example.com/backend2
+#     user: https://example.com/user
+#     (insecure) backend3: http://example.com/backend3
+# If omitted, related WebClients are still created without a baseUrl or skipped from the map.
+
+backend:
+  services: {}

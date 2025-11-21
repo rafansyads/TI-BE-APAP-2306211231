@@ -1,4 +1,4 @@
-package apap.ti._5.accommodation_2306211231_be.restdto.response.accommodationbooking;
+package apap.ti._5.accommodation_2306211231_be.restdto.response.profile;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

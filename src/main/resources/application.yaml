@@ -2,24 +2,20 @@ spring:
   application:
     name: accommodation-2306211231-be
 
-  app:
-    jwt:
-      secret-key: ${JWT_SECRET_KEY}
-      expiration-ms: 86400000 # 1 day in milliseconds
-
   mvc:
     hiddenmethod:
       filter:
         enabled: true
 
   profiles:
-    active: 'prod'
-    # active: 'dev'
+    # active: 'prod'
+    active: 'dev'
     # active: 'test'
 
   jpa:
     hibernate:
       ddl-auto: create-drop
+      # ddl-auto: update
 
     # Uncomment if you want SQL logging (previously added during debugging)
     # show-sql: true
@@ -29,6 +25,11 @@ spring:
 
   main:
     allow-circular-references: true
+
+travel-apap-accommodation-be:
+  app:
+    jwtSecret: ${JWT_SECRET_KEY}
+    jwtExpirationMs: 86400000 # 1 day in milliseconds
 
 server:
   port: ${SERVER_PORT_1:8082}

@@ -3,11 +3,14 @@ package apap.ti._5.accommodation_2306211231_be.config;
 import apap.ti._5.accommodation_2306211231_be.models.Property;
 import apap.ti._5.accommodation_2306211231_be.models.Room;
 import apap.ti._5.accommodation_2306211231_be.models.RoomType;
+import apap.ti._5.accommodation_2306211231_be.models.profile.*;
 import apap.ti._5.accommodation_2306211231_be.repository.PropertyRepository;
+import apap.ti._5.accommodation_2306211231_be.repository.profile.*;
 import apap.ti._5.accommodation_2306211231_be.util.IdUtil;
 import apap.ti._5.accommodation_2306211231_be.util.ProvinceUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
@@ -17,6 +20,13 @@ import java.util.*;
 public class DataSeeder implements CommandLineRunner {
 
     private final PropertyRepository propertyRepository;
+    private final SuperadminRepository superadminRepository;
+    private final CustomerRepository customerRepository;
+    private final RentalVendorRepository rentalVendorRepository;
+    private final FlightAirlineRepository flightAirlineRepository;
+    private final InsuranceProviderRepository insuranceProviderRepository;
+    private final TourPackageVendorRepository tourPackageVendorRepository;
+    private final BCryptPasswordEncoder passwordEncoder;
 
     private static final String[] HOTEL_TYPES = {"Single Room","Double Room","Deluxe Room","Superior Room","Suite","Family Room"};
     private static final String[] VILLA_TYPES = {"Luxury","Beachfront","Mountside","Eco-friendly","Romantic"};
@@ -24,6 +34,94 @@ public class DataSeeder implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
+        // Seed superadmin if not exists
+        if (superadminRepository.count() == 0) {
+            Superadmin admin = new Superadmin();
+            admin.setUsername("admin");
+            admin.setPassword(passwordEncoder.encode("admin123"));
+            admin.setName("System Administrator");
+            admin.setEmail("admin@travel-apap.com");
+            admin.setGender(true);
+            superadminRepository.save(admin);
+        }
+
+        // Seed customers
+        if (customerRepository.count() == 0) {
+            for (int i = 1; i <= 3; i++) {
+                Customer customer = new Customer();
+                customer.setUsername("customer" + i);
+                customer.setPassword(passwordEncoder.encode("customer" + i));
+                customer.setName("Customer " + i);
+                customer.setEmail("customer" + i + "@example.com");
+                customer.setGender(i % 2 == 0);
+                customer.setSaldo((long) (i * 1000000)); // 1M, 2M, 3M
+                customerRepository.save(customer);
+            }
+        }
+
+        // Seed rental vendors
+        if (rentalVendorRepository.count() == 0) {
+            String[] vendors = {"CarRent", "BikeRental", "VanService"};
+            String[][] locations = {
+                {"Jakarta", "Bandung", "Surabaya"},
+                {"Bali", "Yogyakarta", "Semarang"},
+                {"Medan", "Palembang", "Makassar"}
+            };
+            for (int i = 0; i < vendors.length; i++) {
+                RentalVendor vendor = new RentalVendor();
+                vendor.setUsername("rental" + (i + 1));
+                vendor.setPassword(passwordEncoder.encode("rental" + (i + 1)));
+                vendor.setName(vendors[i] + " Company");
+                vendor.setEmail("rental" + (i + 1) + "@example.com");
+                vendor.setGender(i % 2 == 0);
+                vendor.setPhone("+62812345678" + i);
+                vendor.setListOfLocations(Arrays.asList(locations[i]));
+                rentalVendorRepository.save(vendor);
+            }
+        }
+
+        // Seed flight airlines
+        if (flightAirlineRepository.count() == 0) {
+            String[] airlines = {"Sky Airways", "Ocean Air", "Mountain Airlines"};
+            for (int i = 0; i < airlines.length; i++) {
+                FlightAirline airline = new FlightAirline();
+                airline.setUsername("airline" + (i + 1));
+                airline.setPassword(passwordEncoder.encode("airline" + (i + 1)));
+                airline.setName(airlines[i]);
+                airline.setEmail("airline" + (i + 1) + "@example.com");
+                airline.setGender(i % 2 == 0);
+                flightAirlineRepository.save(airline);
+            }
+        }
+
+        // Seed insurance providers
+        if (insuranceProviderRepository.count() == 0) {
+            String[] providers = {"SafeTravel Insurance", "Global Shield", "Journey Guard"};
+            for (int i = 0; i < providers.length; i++) {
+                InsuranceProvider provider = new InsuranceProvider();
+                provider.setUsername("insurance" + (i + 1));
+                provider.setPassword(passwordEncoder.encode("insurance" + (i + 1)));
+                provider.setName(providers[i]);
+                provider.setEmail("insurance" + (i + 1) + "@example.com");
+                provider.setGender(i % 2 == 0);
+                insuranceProviderRepository.save(provider);
+            }
+        }
+
+        // Seed tour package vendors
+        if (tourPackageVendorRepository.count() == 0) {
+            String[] tours = {"Adventure Tours", "Cultural Expeditions", "Beach Paradise Tours"};
+            for (int i = 0; i < tours.length; i++) {
+                TourPackageVendor tour = new TourPackageVendor();
+                tour.setUsername("tour" + (i + 1));
+                tour.setPassword(passwordEncoder.encode("tour" + (i + 1)));
+                tour.setName(tours[i]);
+                tour.setEmail("tour" + (i + 1) + "@example.com");
+                tour.setGender(i % 2 == 0);
+                tourPackageVendorRepository.save(tour);
+            }
+        }
+
         if (propertyRepository.count() > 0) return; // seed only once
 
         // provinces to assign (round-robin, with robust fallback)

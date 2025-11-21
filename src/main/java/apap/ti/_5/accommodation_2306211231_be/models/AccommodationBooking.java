@@ -1,6 +1,7 @@
 package apap.ti._5.accommodation_2306211231_be.models;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
 import lombok.*;
@@ -97,4 +98,16 @@ public class AccommodationBooking {
     @UpdateTimestamp
     @Column(name = "updated_date")
     private LocalDateTime updatedDate;
+
+    // Optional one-to-one link to review (present after customer submits a review)
+    @OneToOne(mappedBy = "booking", cascade = CascadeType.ALL)
+    @JsonManagedReference("booking-review")
+    private AccommodationReview review;
+
+    public void setReview(AccommodationReview review) {
+        this.review = review;
+        if (review != null) {
+            review.setBooking(this);
+        }
+    }
 }

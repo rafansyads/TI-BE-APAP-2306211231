@@ -93,6 +93,11 @@ public class Property {
     @Builder.Default
     private List<RoomType> listRoomType = new ArrayList<>();
 
+    @OneToMany(mappedBy = "property", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonManagedReference("property-reviews")
+    @Builder.Default
+    private List<AccommodationReview> reviews = new ArrayList<>();
+
     public void addRoomType(RoomType roomType) {
         listRoomType.add(roomType);
         roomType.setProperty(this);
@@ -101,5 +106,15 @@ public class Property {
     public void removeRoomType(RoomType roomType) {
         listRoomType.remove(roomType);
         roomType.setProperty(null);
+    }
+
+    public void addReview(AccommodationReview review) {
+        reviews.add(review);
+        review.setProperty(this);
+    }
+
+    public void removeReview(AccommodationReview review) {
+        reviews.remove(review);
+        review.setProperty(null);
     }
 }
