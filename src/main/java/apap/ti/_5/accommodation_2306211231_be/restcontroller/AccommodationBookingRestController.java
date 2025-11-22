@@ -8,7 +8,7 @@ import apap.ti._5.accommodation_2306211231_be.restdto.request.accommodationbooki
 import apap.ti._5.accommodation_2306211231_be.restdto.request.accommodationbooking.AccommodationBookingRefundRequest;
 import apap.ti._5.accommodation_2306211231_be.restdto.request.accommodationbooking.AccommodationBookingUpdateRequest;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.accommodationbooking.AccommodationBookingDto;
-import apap.ti._5.accommodation_2306211231_be.restdto.response.profile.CustomerSummaryDto;
+import apap.ti._5.accommodation_2306211231_be.restdto.response.profile.CustomerSummaryResponseDTO;
 import apap.ti._5.accommodation_2306211231_be.restservice.AccommodationBookingRestService;
 import apap.ti._5.accommodation_2306211231_be.util.ResponseUtil;
 import lombok.RequiredArgsConstructor;
@@ -193,7 +193,7 @@ public class AccommodationBookingRestController {
     }
 
     @GetMapping("/customers")
-    public ResponseEntity<BaseResponseDto<java.util.List<CustomerSummaryDto>>> listCustomers() {
+    public ResponseEntity<BaseResponseDto<java.util.List<CustomerSummaryResponseDTO>>> listCustomers() {
         try {
             var customers = bookingService.getCustomers();
             return ResponseUtil.success(customers, "[GET] Customers retrieved successfully", HttpStatus.OK);

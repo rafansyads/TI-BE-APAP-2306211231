@@ -4,6 +4,7 @@ import apap.ti._5.accommodation_2306211231_be.models.profile.Customer;
 import apap.ti._5.accommodation_2306211231_be.repository.profile.CustomerRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import lombok.NonNull;
 
 import java.util.List;
 import java.util.Optional;
@@ -18,7 +19,7 @@ public class CustomerRestService {
         this.customerRepository = customerRepository;
     }
 
-    public Customer create(Customer customer) {
+    public Customer create(@NonNull Customer customer) {
         return customerRepository.save(customer);
     }
 

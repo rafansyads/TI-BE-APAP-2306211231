@@ -20,7 +20,7 @@ import apap.ti._5.accommodation_2306211231_be.repository.RoomRepository;
 import apap.ti._5.accommodation_2306211231_be.restdto.request.accommodationbooking.AccommodationBookingCreateRequest;
 import apap.ti._5.accommodation_2306211231_be.restdto.request.accommodationbooking.AccommodationBookingUpdateRequest;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.accommodationbooking.AccommodationBookingDto;
-import apap.ti._5.accommodation_2306211231_be.restdto.response.profile.CustomerSummaryDto;
+import apap.ti._5.accommodation_2306211231_be.restdto.response.profile.CustomerSummaryResponseDTO;
 import apap.ti._5.accommodation_2306211231_be.restmapper.AccommodationBookingMapper;
 import apap.ti._5.accommodation_2306211231_be.util.DateUtil;
 import apap.ti._5.accommodation_2306211231_be.util.IdUtil;
@@ -680,14 +680,14 @@ public class AccommodationBookingRestService {
         return changed;
     }
 
-    public java.util.List<CustomerSummaryDto> getCustomers() {
+    public java.util.List<CustomerSummaryResponseDTO> getCustomers() {
         var bookings = bookingRepository.findAll();
-        java.util.Map<String, CustomerSummaryDto> map = new java.util.LinkedHashMap<>();
+        java.util.Map<String, CustomerSummaryResponseDTO> map = new java.util.LinkedHashMap<>();
         for (AccommodationBooking b : bookings) {
             if (b.getCustomerId() != null) {
                 String id = b.getCustomerId().toString();
                 if (!map.containsKey(id)) {
-                    map.put(id, new CustomerSummaryDto(id, b.getCustomerName(), b.getCustomerEmail(), b.getCustomerPhone()));
+                    map.put(id, new CustomerSummaryResponseDTO(id, b.getCustomerName(), b.getCustomerEmail(), b.getCustomerPhone()));
                 }
             }
         }

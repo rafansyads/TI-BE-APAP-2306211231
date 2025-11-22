@@ -7,7 +7,7 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class CustomerSummaryDto {
+public class CustomerSummaryResponseDTO {
     private String customerId; // UUID as string
     private String customerName;
     private String customerEmail;

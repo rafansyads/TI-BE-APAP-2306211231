@@ -12,4 +12,8 @@ public interface CustomerRepository extends JpaRepository<Customer, UUID> {
     Optional<Customer> findByUsername(String username);
     boolean existsByEmail(String email);
     boolean existsByUsername(String username);
+    // Repository-level filters used by EndUserRestService
+    java.util.List<Customer> findByNameContainingIgnoreCase(String name);
+    java.util.List<Customer> findByEmailContainingIgnoreCase(String email);
+    java.util.List<Customer> findByNameContainingIgnoreCaseAndEmailContainingIgnoreCase(String name, String email);
 }

@@ -8,9 +8,15 @@ import apap.ti._5.accommodation_2306211231_be.restdto.request.auth.RegisterReque
 import apap.ti._5.accommodation_2306211231_be.restdto.response.auth.LoginResponseDTO;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.auth.LogoutResponseDTO;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.auth.RegisterResponseDTO;
+import apap.ti._5.accommodation_2306211231_be.restdto.request.auth.TokenRefreshRequestDTO;
+
 import apap.ti._5.accommodation_2306211231_be.security.jwt.JwtUtils;
-import lombok.RequiredArgsConstructor;
 import apap.ti._5.accommodation_2306211231_be.restservice.AuthRestService;
+import apap.ti._5.accommodation_2306211231_be.security.service.JwtTokenService;
+import apap.ti._5.accommodation_2306211231_be.util.ResponseUtil;
+import apap.ti._5.accommodation_2306211231_be.restmapper.AuthMapper;
+
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -20,7 +26,6 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -36,23 +41,14 @@ public class AuthRestController {
     private final AuthenticationManager authenticationManager;
     private final JwtUtils jwtUtils;
     private final AuthRestService authRestService;
-
-    // test method with get mapping
-    @GetMapping
-    public void test() {
-        System.out.println("======== AuthRestController CONSTRUCTOR CALLED ========");
-        System.out.println("AuthenticationManager: " + authenticationManager);
-        System.out.println("JwtUtils: " + jwtUtils);
-        System.out.println("AuthRestService: " + authRestService);        System.out.println("========================================");
-        System.out.println("AuthRestController BEAN CREATED!");
-    }
+    private final JwtTokenService jwtTokenService;
 
     @PostMapping("/login")
     public ResponseEntity<BaseResponseDto<LoginResponseDTO>> login(
         @RequestBody BaseRequestDto<LoginRequestDTO> request) {
         try {
             if (request.getData() == null) {
-                return ResponseEntity.badRequest().body(errorResponse(HttpStatus.BAD_REQUEST, "Missing data object"));
+                return ResponseUtil.error("Missing data object", HttpStatus.BAD_REQUEST);
             }
             LoginRequestDTO payload = request.getData();
             Authentication authentication = authenticationManager.authenticate(
@@ -65,18 +61,10 @@ public class AuthRestController {
             List<String> roles = authRestService.resolveRoles(user);
 
             String token = jwtUtils.generateJwtToken(user.getId(), user.getUsername(), user.getEmail(), user.getName(), roles);
-            LoginResponseDTO data = LoginResponseDTO.builder()
-                    .id(user.getId().toString())
-                    .username(user.getUsername())
-                    .name(user.getName())
-                    .email(user.getEmail())
-                    .roles(roles)
-                    .token(token)
-                    .expiresAt(Instant.now().plusMillis(jwtUtils.getJwtExpirationMs()))
-                    .build();
-            return ResponseEntity.ok(successResponse(data, "Login success"));
+                LoginResponseDTO data = AuthMapper.toLoginResponseDto(user, roles, token, Instant.now().plusMillis(jwtUtils.getJwtExpirationMs()));
+            return ResponseUtil.success(data, "Login success", HttpStatus.OK);
         } catch (BadCredentialsException ex){
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(errorResponse(HttpStatus.UNAUTHORIZED, "Invalid username or password"));
+            return ResponseUtil.error("Invalid username or password", HttpStatus.UNAUTHORIZED);
         }
     }
 
@@ -84,56 +72,57 @@ public class AuthRestController {
     public ResponseEntity<BaseResponseDto<RegisterResponseDTO>> register(
         @RequestBody BaseRequestDto<RegisterRequestDTO> request) {
         if (request.getData() == null) {
-            return ResponseEntity.badRequest().body(errorResponse(HttpStatus.BAD_REQUEST, "Missing data object"));
+            return ResponseUtil.error("Missing data object", HttpStatus.BAD_REQUEST);
         }
         RegisterRequestDTO payload = request.getData();
         if ("SUPERADMIN".equalsIgnoreCase(payload.getRole())) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(errorResponse(HttpStatus.FORBIDDEN, "Cannot self-register SUPERADMIN role"));
+            return ResponseUtil.error("Cannot self-register SUPERADMIN role", HttpStatus.FORBIDDEN);
         }
         if (authRestService.existsUsername(payload.getUsername())) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body(errorResponse(HttpStatus.CONFLICT, "Username already taken"));
+            return ResponseUtil.error("Username already taken", HttpStatus.CONFLICT);
         }
         if (authRestService.existsEmail(payload.getEmail())) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body(errorResponse(HttpStatus.CONFLICT, "Email already taken"));
+            return ResponseUtil.error("Email already taken", HttpStatus.CONFLICT);
         }
         EndUser created = authRestService.register(payload);
 
-        RegisterResponseDTO data = RegisterResponseDTO.builder()
-                .id(created.getId().toString())
-                .username(created.getUsername())
-                .role(authRestService.resolveRoles(created).get(0))
-                .createdAt(Instant.now())
-                .build();
-        return ResponseEntity.status(HttpStatus.CREATED).body(successResponse(data, "Register success"));
+        RegisterResponseDTO data = AuthMapper.toRegisterResponseDto(created, authRestService.resolveRoles(created).get(0), Instant.now());
+        return ResponseUtil.success(data, "Register success", HttpStatus.CREATED);
     }
 
     @PostMapping("/logout")
     public ResponseEntity<BaseResponseDto<LogoutResponseDTO>> logout() {
         SecurityContextHolder.clearContext();
-        LogoutResponseDTO data = LogoutResponseDTO.builder()
-                .message("Logged out (client must discard token)")
-                .timestamp(Instant.now())
-                .build();
-        return ResponseEntity.ok(successResponse(data, "Logout success"));
+        LogoutResponseDTO data = AuthMapper.toLogoutResponseDto("Logged out (client must discard token)", Instant.now());
+        return ResponseUtil.success(data, "Logout success", HttpStatus.OK);
     }
 
-    // Controller now delegates user/role/existence logic to AuthRestService
+    @PostMapping("/refresh")
+    public ResponseEntity<BaseResponseDto<LoginResponseDTO>> refreshToken(
+            @RequestBody BaseRequestDto<TokenRefreshRequestDTO> request
+    ) {
+        if (request.getData() == null) {
+            return ResponseUtil.error("Missing data object", HttpStatus.BAD_REQUEST);
+        }
+        TokenRefreshRequestDTO dto = request.getData();
+        String token = dto.getToken();
+        String reqUsername = dto.getUsername();
+        String reqEmail = dto.getEmail();
 
-    private <T> BaseResponseDto<T> successResponse(T data, String message) {
-        BaseResponseDto<T> resp = new BaseResponseDto<>();
-        resp.setStatus(HttpStatus.OK.value());
-        resp.setMessage(message);
-        resp.setTimestamp(new java.util.Date());
-        resp.setData(data);
-        return resp;
-    }
+        if (token == null || token.isBlank()) {
+            return ResponseUtil.error("Missing token", HttpStatus.BAD_REQUEST);
+        }
+        if (reqUsername == null || reqUsername.isBlank() || reqEmail == null || reqEmail.isBlank()) {
+            return ResponseUtil.error("Missing username or email in request", HttpStatus.BAD_REQUEST);
+        }
 
-    private <T> BaseResponseDto<T> errorResponse(HttpStatus status, String message) {
-        BaseResponseDto<T> resp = new BaseResponseDto<>();
-        resp.setStatus(status.value());
-        resp.setMessage(message);
-        resp.setTimestamp(new java.util.Date());
-        resp.setData(null);
-        return resp;
+        // Delegate to JwtTokenService which validates token, checks user and issues a new token
+        LoginResponseDTO refreshed = jwtTokenService.refreshToken(token, reqUsername, reqEmail);
+        if (refreshed == null) {
+            return ResponseUtil.error("Invalid or expired token, or user not authorized", HttpStatus.UNAUTHORIZED);
+        }
+
+        // Using LoginResponseDTO because it contains token and expiry info
+        return ResponseUtil.success(refreshed, "Token refreshed", HttpStatus.OK);
     }
 }
