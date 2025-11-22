@@ -59,13 +59,16 @@ public class AuthRestService {
 	}
 
 	public boolean existsEmail(String email) {
-		// NOTE: Could be optimized per table with custom query methods.
-		return superadminRepository.findAll().stream().anyMatch(u -> u.getEmail().equalsIgnoreCase(email)) ||
-				rentalVendorRepository.findAll().stream().anyMatch(u -> u.getEmail().equalsIgnoreCase(email)) ||
-				flightAirlineRepository.findAll().stream().anyMatch(u -> u.getEmail().equalsIgnoreCase(email)) ||
-				insuranceProviderRepository.findAll().stream().anyMatch(u -> u.getEmail().equalsIgnoreCase(email)) ||
-				tourPackageVendorRepository.findAll().stream().anyMatch(u -> u.getEmail().equalsIgnoreCase(email)) ||
-				customerRepository.findAll().stream().anyMatch(u -> u.getEmail().equalsIgnoreCase(email));
+		// Use repository-level case-insensitive lookups to avoid full-table scans
+		if (email == null) return false;
+		String maybe = email.trim();
+		if (maybe.isEmpty()) return false;
+		if (superadminRepository.findByEmailIgnoreCase(maybe).isPresent()) return true;
+		if (rentalVendorRepository.findByEmailIgnoreCase(maybe).isPresent()) return true;
+		if (flightAirlineRepository.findByEmailIgnoreCase(maybe).isPresent()) return true;
+		if (insuranceProviderRepository.findByEmailIgnoreCase(maybe).isPresent()) return true;
+		if (tourPackageVendorRepository.findByEmailIgnoreCase(maybe).isPresent()) return true;
+		return customerRepository.findByEmailIgnoreCase(maybe).isPresent();
 	}
 
 	public EndUser register(RegisterRequestDTO payload) {

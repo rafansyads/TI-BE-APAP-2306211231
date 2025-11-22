@@ -237,8 +237,8 @@ public class EndUserRestService {
 			if (!isSuperadmin) {
 				throw new IllegalArgumentException("Only SUPERADMIN can update saldo");
 			}
-			if (target instanceof Customer) {
-				((Customer) target).setSaldo(dto.getSaldo());
+			if (target instanceof Customer customer) {
+				customer.setSaldo(dto.getSaldo());
 			}
 		}
 

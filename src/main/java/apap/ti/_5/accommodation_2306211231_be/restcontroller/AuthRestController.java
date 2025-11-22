@@ -104,6 +104,11 @@ public class AuthRestController {
         if (request.getData() == null) {
             return ResponseUtil.error("Missing data object", HttpStatus.BAD_REQUEST);
         }
+        // if not authenticated, return error
+        if (SecurityContextHolder.getContext().getAuthentication() == null || !SecurityContextHolder.getContext().getAuthentication().isAuthenticated()) {
+            return ResponseUtil.error("User not authenticated", HttpStatus.UNAUTHORIZED);
+        }
+
         TokenRefreshRequestDTO dto = request.getData();
         String token = dto.getToken();
         String reqUsername = dto.getUsername();
