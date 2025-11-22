@@ -10,4 +10,6 @@ import java.util.UUID;
 @Repository
 public interface FlightAirlineRepository extends JpaRepository<FlightAirline, UUID> {
     Optional<FlightAirline> findByUsername(String username);
+    Optional<FlightAirline> findByEmail(String email);
+    Optional<FlightAirline> findByEmailIgnoreCase(String email);
 }

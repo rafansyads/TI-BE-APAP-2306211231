@@ -10,4 +10,6 @@ import java.util.UUID;
 @Repository
 public interface InsuranceProviderRepository extends JpaRepository<InsuranceProvider, UUID> {
     Optional<InsuranceProvider> findByUsername(String username);
+    Optional<InsuranceProvider> findByEmail(String email);
+    Optional<InsuranceProvider> findByEmailIgnoreCase(String email);
 }

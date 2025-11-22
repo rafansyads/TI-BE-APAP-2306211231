@@ -2,6 +2,7 @@ package apap.ti._5.accommodation_2306211231_be.restmapper;
 
 import apap.ti._5.accommodation_2306211231_be.models.profile.EndUser;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.profile.EndUserResponseDTO;
+import apap.ti._5.accommodation_2306211231_be.models.profile.Customer;
 
 public final class EndUserMapper {
     private EndUserMapper() {}
@@ -15,6 +16,8 @@ public final class EndUserMapper {
                 .email(u.getEmail())
                 .gender(u.getGender())
                 .createdAt(u.getCreatedAt())
+                .updatedAt(u.getUpdatedAt())
+                .saldo(u instanceof Customer ? ((Customer) u).getSaldo() : null)
                 .role(role)
                 .build();
     }

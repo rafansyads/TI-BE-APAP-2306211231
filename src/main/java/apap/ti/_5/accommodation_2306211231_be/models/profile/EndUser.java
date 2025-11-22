@@ -5,7 +5,7 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
+// removed UpdateTimestamp to control updatedAt manually
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -42,7 +42,6 @@ public abstract class EndUser {
 	@Column(name = "created_at", updatable = false)
 	private LocalDateTime createdAt;
 
-	@UpdateTimestamp
 	@Column(name = "updated_at")
 	private LocalDateTime updatedAt;
 
@@ -57,5 +56,12 @@ public abstract class EndUser {
 		if (isDeleted == null) {
 			isDeleted = false;
 		}
+		// ensure updatedAt remains null on initial creation
+		this.updatedAt = null;
+	}
+
+	@PreUpdate
+	public void preUpdate() {
+		this.updatedAt = LocalDateTime.now();
 	}
 }

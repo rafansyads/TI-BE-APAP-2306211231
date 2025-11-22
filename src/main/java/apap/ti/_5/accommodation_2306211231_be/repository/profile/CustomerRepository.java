@@ -10,6 +10,8 @@ import java.util.UUID;
 @Repository
 public interface CustomerRepository extends JpaRepository<Customer, UUID> {
     Optional<Customer> findByUsername(String username);
+    Optional<Customer> findByEmail(String email);
+    Optional<Customer> findByEmailIgnoreCase(String email);
     boolean existsByEmail(String email);
     boolean existsByUsername(String username);
     // Repository-level filters used by EndUserRestService

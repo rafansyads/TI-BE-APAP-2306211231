@@ -10,4 +10,6 @@ import java.util.UUID;
 @Repository
 public interface SuperadminRepository extends JpaRepository<Superadmin, UUID> {
     Optional<Superadmin> findByUsername(String username);
+    Optional<Superadmin> findByEmail(String email);
+    Optional<Superadmin> findByEmailIgnoreCase(String email);
 }

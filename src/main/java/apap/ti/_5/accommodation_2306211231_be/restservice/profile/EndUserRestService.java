@@ -7,6 +7,7 @@ import apap.ti._5.accommodation_2306211231_be.restservice.AuthRestService;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.profile.CustomerResponseDTO;
 import apap.ti._5.accommodation_2306211231_be.restmapper.EndUserMapper;
 import apap.ti._5.accommodation_2306211231_be.restmapper.CustomerMapper;
+import apap.ti._5.accommodation_2306211231_be.restdto.request.profile.EndUserUpdateRequestDTO;
 
 import lombok.RequiredArgsConstructor;
 
@@ -17,6 +18,10 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
@@ -107,14 +112,12 @@ public class EndUserRestService {
 		}
 
 		List<Customer> customers;
-		boolean hasName = nameFilter != null && !nameFilter.isBlank();
-		boolean hasEmail = emailFilter != null && !emailFilter.isBlank();
 
-		if (hasName && hasEmail) {
+		if (nameFilter != null && emailFilter != null && !nameFilter.isBlank() && !emailFilter.isBlank()) {
 			customers = customerRepository.findByNameContainingIgnoreCaseAndEmailContainingIgnoreCase(nameFilter.trim(), emailFilter.trim());
-		} else if (hasName) {
+		} else if (nameFilter != null && !nameFilter.isBlank()) {
 			customers = customerRepository.findByNameContainingIgnoreCase(nameFilter.trim());
-		} else if (hasEmail) {
+		} else if (emailFilter != null && !emailFilter.isBlank()) {
 			customers = customerRepository.findByEmailContainingIgnoreCase(emailFilter.trim());
 		} else {
 			customers = customerRepository.findAll();
@@ -127,6 +130,137 @@ public class EndUserRestService {
 			dtos.add(dto);
 		}
 		return dtos;
+	}
+
+	/**
+	 * Find EndUser by identifier which can be UUID, username, or email.
+	 * Returns the EndUser entity or null when not found.
+	 */
+	public EndUser findEndUserByIdentifier(String identifier) {
+		if (identifier == null || identifier.isBlank()) return null;
+
+		// try UUID
+		try {
+			UUID id = UUID.fromString(identifier.trim());
+			Optional<? extends EndUser> res;
+			res = superadminRepository.findById(id);
+			if (res.isPresent()) return res.get();
+			res = rentalVendorRepository.findById(id);
+			if (res.isPresent()) return res.get();
+			res = flightAirlineRepository.findById(id);
+			if (res.isPresent()) return res.get();
+			res = insuranceProviderRepository.findById(id);
+			if (res.isPresent()) return res.get();
+			res = tourPackageVendorRepository.findById(id);
+			if (res.isPresent()) return res.get();
+			res = customerRepository.findById(id);
+			if (res.isPresent()) return res.get();
+		} catch (IllegalArgumentException ex) {
+			// not a UUID, continue
+		}
+
+        
+		String maybeUsername = identifier.trim();
+		// try username lookups
+		Optional<? extends EndUser> resOpt;
+		resOpt = superadminRepository.findByUsername(maybeUsername);
+		if (resOpt.isPresent()) return resOpt.get();
+		resOpt = rentalVendorRepository.findByUsername(maybeUsername);
+		if (resOpt.isPresent()) return resOpt.get();
+		resOpt = flightAirlineRepository.findByUsername(maybeUsername);
+		if (resOpt.isPresent()) return resOpt.get();
+		resOpt = insuranceProviderRepository.findByUsername(maybeUsername);
+		if (resOpt.isPresent()) return resOpt.get();
+		resOpt = tourPackageVendorRepository.findByUsername(maybeUsername);
+		if (resOpt.isPresent()) return resOpt.get();
+		resOpt = customerRepository.findByUsername(maybeUsername);
+		if (resOpt.isPresent()) return resOpt.get();
+
+		// try email lookups (case-insensitive)
+		String maybeEmail = identifier.trim();
+		Optional<? extends EndUser> byEmail;
+		byEmail = superadminRepository.findByEmailIgnoreCase(maybeEmail);
+		if (byEmail.isPresent()) return byEmail.get();
+		byEmail = rentalVendorRepository.findByEmailIgnoreCase(maybeEmail);
+		if (byEmail.isPresent()) return byEmail.get();
+		byEmail = flightAirlineRepository.findByEmailIgnoreCase(maybeEmail);
+		if (byEmail.isPresent()) return byEmail.get();
+		byEmail = insuranceProviderRepository.findByEmailIgnoreCase(maybeEmail);
+		if (byEmail.isPresent()) return byEmail.get();
+		byEmail = tourPackageVendorRepository.findByEmailIgnoreCase(maybeEmail);
+		if (byEmail.isPresent()) return byEmail.get();
+		byEmail = customerRepository.findByEmailIgnoreCase(maybeEmail);
+		if (byEmail.isPresent()) return byEmail.get();
+
+		return null;
+	}
+
+		/**
+		 * Convenience method to get detail DTO for an identifier.
+		 */
+		public EndUserResponseDTO getEndUserDtoByIdentifier(String identifier) {
+			EndUser u = findEndUserByIdentifier(identifier);
+			if (u == null) return null;
+			List<String> roles = authRestService.resolveRoles(u);
+			String role = roles.isEmpty() ? null : roles.get(0);
+			return EndUserMapper.toDTO(u, role);
+		}
+
+	/**
+	 * Update EndUser identified by identifier according to role rules.
+	 */
+	@Transactional
+	public EndUserResponseDTO updateEndUser(String identifier, EndUserUpdateRequestDTO dto) {
+		EndUser target = findEndUserByIdentifier(identifier);
+		if (target == null) throw new IllegalArgumentException("Target user not found");
+
+		Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+		String caller = auth == null ? null : auth.getName();
+		boolean isSuperadmin = auth != null && auth.getAuthorities().stream().anyMatch(a -> "ROLE_SUPERADMIN".equals(a.getAuthority()));
+
+		// If not superadmin, only allow user to update themself
+		if (!isSuperadmin) {
+			// caller must match target username or email
+			if (caller == null || (!caller.equals(target.getUsername()) && (target.getEmail()==null || !caller.equalsIgnoreCase(target.getEmail())))) {
+				throw new AccessDeniedException("You are not authorized to update this user");
+			}
+		}
+
+		// Apply updates: superadmin may update saldo; endusers may not.
+		if (dto.getUsername() != null && !dto.getUsername().isBlank()) target.setUsername(dto.getUsername().trim());
+		if (dto.getName() != null && !dto.getName().isBlank()) target.setName(dto.getName().trim());
+		if (dto.getPassword() != null && !dto.getPassword().isBlank()) target.setPassword(dto.getPassword());
+		if (dto.getEmail() != null && !dto.getEmail().isBlank()) target.setEmail(dto.getEmail().trim());
+		if (dto.getGender() != null) target.setGender(dto.getGender());
+
+		if (dto.getSaldo() != null) {
+			if (!isSuperadmin) {
+				throw new IllegalArgumentException("Only SUPERADMIN can update saldo");
+			}
+			if (target instanceof Customer) {
+				((Customer) target).setSaldo(dto.getSaldo());
+			}
+		}
+
+		// persist to correct repository based on runtime type
+		if (target instanceof Superadmin) {
+			superadminRepository.save((Superadmin) target);
+		} else if (target instanceof RentalVendor) {
+			rentalVendorRepository.save((RentalVendor) target);
+		} else if (target instanceof FlightAirline) {
+			flightAirlineRepository.save((FlightAirline) target);
+		} else if (target instanceof InsuranceProvider) {
+			insuranceProviderRepository.save((InsuranceProvider) target);
+		} else if (target instanceof TourPackageVendor) {
+			tourPackageVendorRepository.save((TourPackageVendor) target);
+		} else if (target instanceof Customer) {
+			customerRepository.save((Customer) target);
+		}
+
+		// return mapped DTO
+		List<String> roles = authRestService.resolveRoles(target);
+		String role = roles.isEmpty() ? null : roles.get(0);
+		return EndUserMapper.toDTO(target, role);
 	}
 
 }
