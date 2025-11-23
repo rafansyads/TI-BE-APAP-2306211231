@@ -75,6 +75,7 @@ public class AuthRestController {
             if (ip == null || ip.isBlank())
                 ip = servletRequest.getRemoteAddr();
             String ua = servletRequest.getHeader("User-Agent");
+            
             // create refresh token and return both tokens in headers
             String refreshToken = refreshTokenService.createRefreshToken(user.getUsername(), ip, ua);
             HttpHeaders headers = new HttpHeaders();

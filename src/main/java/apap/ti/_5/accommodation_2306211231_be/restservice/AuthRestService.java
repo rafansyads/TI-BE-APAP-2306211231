@@ -27,6 +27,8 @@ public class AuthRestService {
   
 	private final BCryptPasswordEncoder passwordEncoder;
 
+    private final AccommodationOwnerRepository accommodationOwnerRepository;
+
 
 	// Aggregate user lookup across all role tables
 	public EndUser findAggregateByUsername(String username) {
@@ -35,6 +37,7 @@ public class AuthRestService {
 				.or(() -> flightAirlineRepository.findByUsername(username).map(u -> (EndUser) u))
 				.or(() -> insuranceProviderRepository.findByUsername(username).map(u -> (EndUser) u))
 				.or(() -> tourPackageVendorRepository.findByUsername(username).map(u -> (EndUser) u))
+				.or(() -> accommodationOwnerRepository.findByUsername(username).map(u -> (EndUser) u))
 				.or(() -> customerRepository.findByUsername(username).map(u -> (EndUser) u))
 				.orElse(null);
 	}
@@ -46,6 +49,7 @@ public class AuthRestService {
 		if (user instanceof FlightAirline) return List.of("ROLE_FLIGHT_AIRLINE");
 		if (user instanceof InsuranceProvider) return List.of("ROLE_INSURANCE_PROVIDER");
 		if (user instanceof TourPackageVendor) return List.of("ROLE_TOUR_PACKAGE_VENDOR");
+		if (user instanceof AccommodationOwner) return List.of("ROLE_ACCOMMODATION_OWNER");
 		return List.of("ROLE_CUSTOMER");
 	}
 
@@ -55,6 +59,7 @@ public class AuthRestService {
 				flightAirlineRepository.findByUsername(username).isPresent() ||
 				insuranceProviderRepository.findByUsername(username).isPresent() ||
 				tourPackageVendorRepository.findByUsername(username).isPresent() ||
+				accommodationOwnerRepository.findByUsername(username).isPresent() ||
 				customerRepository.findByUsername(username).isPresent();
 	}
 
@@ -68,12 +73,22 @@ public class AuthRestService {
 		if (flightAirlineRepository.findByEmailIgnoreCase(maybe).isPresent()) return true;
 		if (insuranceProviderRepository.findByEmailIgnoreCase(maybe).isPresent()) return true;
 		if (tourPackageVendorRepository.findByEmailIgnoreCase(maybe).isPresent()) return true;
+		if (accommodationOwnerRepository.findByEmailIgnoreCase(maybe).isPresent()) return true;
 		return customerRepository.findByEmailIgnoreCase(maybe).isPresent();
 	}
 
 	public EndUser register(RegisterRequestDTO payload) {
 		String roleUpper = payload.getRole() == null ? "CUSTOMER" : payload.getRole().toUpperCase();
 		switch (roleUpper) {
+			case "ACCOMMODATION_OWNER":
+				apap.ti._5.accommodation_2306211231_be.models.profile.AccommodationOwner ao = new apap.ti._5.accommodation_2306211231_be.models.profile.AccommodationOwner();
+				ao.setUsername(payload.getUsername());
+				ao.setPassword(passwordEncoder.encode(payload.getPassword()));
+				ao.setName(payload.getName());
+				ao.setEmail(payload.getEmail());
+				ao.setGender(payload.getGender());
+				return accommodationOwnerRepository.save(ao);
+
 			case "RENTAL_VENDOR":
 				RentalVendor rv = new RentalVendor();
 				rv.setUsername(payload.getUsername());

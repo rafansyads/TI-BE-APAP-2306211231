@@ -26,6 +26,10 @@ public class AccommodationReviewRestService {
         return reviewRepository.findByProperty_PropertyId(propertyId);
     }
 
+    public List<AccommodationReview> findByCustomerId(java.util.UUID customerId) {
+        return reviewRepository.findByCustomer_Id(customerId);
+    }
+
     public Optional<AccommodationReview> findById(String id) { return reviewRepository.findById(id); }
 
     public boolean existsForBooking(String bookingId) { return reviewRepository.existsByBooking_BookingId(bookingId); }

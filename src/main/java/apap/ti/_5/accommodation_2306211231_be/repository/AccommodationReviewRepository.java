@@ -9,5 +9,6 @@ import java.util.List;
 @Repository
 public interface AccommodationReviewRepository extends JpaRepository<AccommodationReview, String> {
     List<AccommodationReview> findByProperty_PropertyId(String propertyId);
+    List<AccommodationReview> findByCustomer_Id(java.util.UUID customerId);
     boolean existsByBooking_BookingId(String bookingId);
 }

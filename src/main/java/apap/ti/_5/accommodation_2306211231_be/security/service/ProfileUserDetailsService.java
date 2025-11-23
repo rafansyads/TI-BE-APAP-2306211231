@@ -35,6 +35,8 @@ public class ProfileUserDetailsService implements UserDetailsService {
     private final TourPackageVendorRepository tourPackageVendorRepository;    
 
     private final CustomerRepository customerRepository;
+    
+    private final AccommodationOwnerRepository accommodationOwnerRepository;
 
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
@@ -58,6 +60,10 @@ public class ProfileUserDetailsService implements UserDetailsService {
         if (found == null) {
             Optional<TourPackageVendor> tpv = tourPackageVendorRepository.findByUsername(username);
             if (tpv.isPresent()) { found = tpv.get(); role = "ROLE_TOUR_PACKAGE_VENDOR"; }
+        }
+        if (found == null) {
+            Optional<AccommodationOwner> owner = accommodationOwnerRepository.findByUsername(username);
+            if (owner.isPresent()) { found = owner.get(); role = "ROLE_ACCOMMODATION_OWNER"; }
         }
         if (found == null) {
             Optional<Customer> cust = customerRepository.findByUsername(username);

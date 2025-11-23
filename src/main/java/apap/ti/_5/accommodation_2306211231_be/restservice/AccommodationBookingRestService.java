@@ -7,9 +7,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
+import java.util.LinkedHashMap;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.UUID;
+import java.util.Objects;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 
 import apap.ti._5.accommodation_2306211231_be.models.AccommodationBooking;
 import apap.ti._5.accommodation_2306211231_be.models.Property;
@@ -22,6 +29,7 @@ import apap.ti._5.accommodation_2306211231_be.restdto.request.accommodationbooki
 import apap.ti._5.accommodation_2306211231_be.restdto.response.accommodationbooking.AccommodationBookingDto;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.profile.CustomerSummaryResponseDTO;
 import apap.ti._5.accommodation_2306211231_be.restmapper.AccommodationBookingMapper;
+import apap.ti._5.accommodation_2306211231_be.restservice.CustomerRestService;
 import apap.ti._5.accommodation_2306211231_be.util.DateUtil;
 import apap.ti._5.accommodation_2306211231_be.util.IdUtil;
 import lombok.RequiredArgsConstructor;
@@ -37,7 +45,7 @@ public class AccommodationBookingRestService {
 
     private final PropertyRepository propertyRepository;
 
-    
+    private final CustomerRestService customerService;
 
     public long count() {
         return bookingRepository.count();
@@ -56,12 +64,13 @@ public class AccommodationBookingRestService {
         return bookingRepository.save(booking);
     }
 
-    // public AccommodationBooking updateBooking(String bookingId, AccommodationBooking booking) {
-    //     throw new UnsupportedOperationException("Not implemented yet");
+    // public AccommodationBooking updateBooking(String bookingId,
+    // AccommodationBooking booking) {
+    // throw new UnsupportedOperationException("Not implemented yet");
     // }
 
     // public void deleteBooking(String bookingId) {
-    //     throw new UnsupportedOperationException("Not implemented yet");
+    // throw new UnsupportedOperationException("Not implemented yet");
     // }
 
     // DTO-based method signatures for controllers (stubs)
@@ -133,7 +142,8 @@ public class AccommodationBookingRestService {
         }
         // Maintenance overlap check
         if (room.getMaintenanceStart() != null && room.getMaintenanceEnd() != null) {
-            if (DateUtil.isOverlapping(effectiveIn, effectiveOut, room.getMaintenanceStart(), room.getMaintenanceEnd())) {
+            if (DateUtil.isOverlapping(effectiveIn, effectiveOut, room.getMaintenanceStart(),
+                    room.getMaintenanceEnd())) {
                 throw new IllegalArgumentException("Booking window overlaps with room maintenance schedule");
             }
         }
@@ -142,10 +152,12 @@ public class AccommodationBookingRestService {
         if (room.getBookings() != null) {
             for (AccommodationBooking b : room.getBookings()) {
                 Integer st = b.getStatus();
-                if (st != null && st == 2) continue; // ignore canceled
+                if (st != null && st == 2)
+                    continue; // ignore canceled
                 if (b.getCheckInDate() != null && b.getCheckOutDate() != null) {
                     if (DateUtil.isOverlapping(effectiveIn, effectiveOut, b.getCheckInDate(), b.getCheckOutDate())) {
-                        throw new IllegalArgumentException("Booking window overlaps with an existing booking for this room");
+                        throw new IllegalArgumentException(
+                                "Booking window overlaps with an existing booking for this room");
                     }
                 }
             }
@@ -220,7 +232,8 @@ public class AccommodationBookingRestService {
             throw new IllegalArgumentException("Check-in cannot be earlier than now");
         }
         if (room.getMaintenanceStart() != null && room.getMaintenanceEnd() != null) {
-            if (DateUtil.isOverlapping(effectiveIn2, effectiveOut2, room.getMaintenanceStart(), room.getMaintenanceEnd())) {
+            if (DateUtil.isOverlapping(effectiveIn2, effectiveOut2, room.getMaintenanceStart(),
+                    room.getMaintenanceEnd())) {
                 throw new IllegalArgumentException("Booking window overlaps with room maintenance schedule");
             }
         }
@@ -228,10 +241,12 @@ public class AccommodationBookingRestService {
         if (room.getBookings() != null) {
             for (AccommodationBooking b : room.getBookings()) {
                 Integer st = b.getStatus();
-                if (st != null && st == 2) continue;
+                if (st != null && st == 2)
+                    continue;
                 if (b.getCheckInDate() != null && b.getCheckOutDate() != null) {
                     if (DateUtil.isOverlapping(effectiveIn2, effectiveOut2, b.getCheckInDate(), b.getCheckOutDate())) {
-                        throw new IllegalArgumentException("Booking window overlaps with an existing booking for this room");
+                        throw new IllegalArgumentException(
+                                "Booking window overlaps with an existing booking for this room");
                     }
                 }
             }
@@ -284,7 +299,8 @@ public class AccommodationBookingRestService {
         AccommodationBooking existing = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new NoSuchElementException("Booking not found with ID: " + bookingId));
 
-        // Enforce rule: Updates are only allowed for status 0 or 1 when there is no pending extraPay/refund
+        // Enforce rule: Updates are only allowed for status 0 or 1 when there is no
+        // pending extraPay/refund
         int currStatus = existing.getStatus() == null ? 0 : existing.getStatus();
         int extra = existing.getExtraPay() == null ? 0 : existing.getExtraPay();
         int refund = existing.getRefund() == null ? 0 : existing.getRefund();
@@ -300,7 +316,7 @@ public class AccommodationBookingRestService {
 
         // Customer identity must not change
         if (existing.getCustomerId() != null && request.getCustomerId() != null) {
-            java.util.UUID reqCustId = java.util.UUID.fromString(request.getCustomerId().trim());
+            UUID reqCustId = UUID.fromString(request.getCustomerId().trim());
             if (!existing.getCustomerId().equals(reqCustId)) {
                 throw new IllegalArgumentException("customerId cannot be changed for an existing booking");
             }
@@ -315,7 +331,8 @@ public class AccommodationBookingRestService {
                 .orElseThrow(() -> new IllegalArgumentException("Room not found with ID: " + roomId));
 
         if (request.getRoomName() == null || request.getRoomTypeName() == null || request.getPropertyName() == null
-                || request.getRoomName().isBlank() || request.getRoomTypeName().isBlank() || request.getPropertyName().isBlank()) {
+                || request.getRoomName().isBlank() || request.getRoomTypeName().isBlank()
+                || request.getPropertyName().isBlank()) {
             throw new IllegalArgumentException("propertyName, roomTypeName, and roomName are required for update");
         }
 
@@ -330,14 +347,14 @@ public class AccommodationBookingRestService {
             throw new IllegalArgumentException("propertyName does not match the target Property");
         }
 
-    // Snapshot previous values for comparison before applying updates
-    LocalDateTime prevCheckIn = existing.getCheckInDate();
-    LocalDateTime prevCheckOut = existing.getCheckOutDate();
-    Boolean prevBreakfast = existing.getIsBreakfast();
-    Integer previousTotal = existing.getTotalPrice() == null ? 0 : existing.getTotalPrice();
+        // Snapshot previous values for comparison before applying updates
+        LocalDateTime prevCheckIn = existing.getCheckInDate();
+        LocalDateTime prevCheckOut = existing.getCheckOutDate();
+        Boolean prevBreakfast = existing.getIsBreakfast();
+        Integer previousTotal = existing.getTotalPrice() == null ? 0 : existing.getTotalPrice();
 
-    // Apply core field updates from request
-    AccommodationBookingMapper.updateEntity(existing, request);
+        // Apply core field updates from request
+        AccommodationBookingMapper.updateEntity(existing, request);
 
         // Normalize and validate the booking window
         LocalDateTime requestedIn = existing.getCheckInDate();
@@ -357,7 +374,8 @@ public class AccommodationBookingRestService {
 
         // Maintenance overlap check
         if (room.getMaintenanceStart() != null && room.getMaintenanceEnd() != null) {
-            if (DateUtil.isOverlapping(effectiveIn, effectiveOut, room.getMaintenanceStart(), room.getMaintenanceEnd())) {
+            if (DateUtil.isOverlapping(effectiveIn, effectiveOut, room.getMaintenanceStart(),
+                    room.getMaintenanceEnd())) {
                 throw new IllegalArgumentException("Booking window overlaps with room maintenance schedule");
             }
         }
@@ -365,12 +383,15 @@ public class AccommodationBookingRestService {
         // Existing bookings overlap check (exclude canceled, ignore self)
         if (room.getBookings() != null) {
             for (AccommodationBooking b : room.getBookings()) {
-                if (bookingId.equals(b.getBookingId())) continue; // skip self
+                if (bookingId.equals(b.getBookingId()))
+                    continue; // skip self
                 Integer st = b.getStatus();
-                if (st != null && st == 2) continue;
+                if (st != null && st == 2)
+                    continue;
                 if (b.getCheckInDate() != null && b.getCheckOutDate() != null) {
                     if (DateUtil.isOverlapping(effectiveIn, effectiveOut, b.getCheckInDate(), b.getCheckOutDate())) {
-                        throw new IllegalArgumentException("Booking window overlaps with an existing booking for this room");
+                        throw new IllegalArgumentException(
+                                "Booking window overlaps with an existing booking for this room");
                     }
                 }
             }
@@ -395,21 +416,24 @@ public class AccommodationBookingRestService {
 
         Integer prevStatus = currStatus;
 
-        // Determine if the change is only due to RoomType.price (dates/breakfast unchanged)
+        // Determine if the change is only due to RoomType.price (dates/breakfast
+        // unchanged)
         boolean datesUnchanged = (prevCheckIn != null && prevCheckOut != null
                 && prevCheckIn.equals(existing.getCheckInDate())
                 && prevCheckOut.equals(existing.getCheckOutDate()));
-        boolean breakfastUnchanged = java.util.Objects.equals(prevBreakfast, existing.getIsBreakfast());
+        boolean breakfastUnchanged = Objects.equals(prevBreakfast, existing.getIsBreakfast());
 
         // Apply per-status rules
-        // New rule: do not change totalPrice on update; keep as-is until next payment/refund action.
+        // New rule: do not change totalPrice on update; keep as-is until next
+        // payment/refund action.
         existing.setTotalPrice(previousTotal);
 
         int delta = expectedTotal - previousTotal;
         if (prevStatus == 1) {
             if (!(datesUnchanged && breakfastUnchanged)) {
                 if (delta > 0) {
-                    // Longer stay (more expensive): require extraPay, revert to waiting, and remove previously recognized income
+                    // Longer stay (more expensive): require extraPay, revert to waiting, and remove
+                    // previously recognized income
                     existing.setExtraPay(delta);
                     existing.setRefund(0);
                     existing.setStatus(0);
@@ -421,7 +445,8 @@ public class AccommodationBookingRestService {
                         propertyRepository.save(prop);
                     }
                 } else if (delta < 0) {
-                    // Shorter stay (cheaper): set refund and go to refund-requested; do not change income yet
+                    // Shorter stay (cheaper): set refund and go to refund-requested; do not change
+                    // income yet
                     existing.setRefund(-delta);
                     existing.setExtraPay(0);
                     existing.setStatus(3);
@@ -466,7 +491,8 @@ public class AccommodationBookingRestService {
             throw new IllegalStateException("Only bookings with status 0 (waiting for payment) can be paid");
         }
 
-        // Apply stored adjustments (extraPay/refund) at payment time to the original total
+        // Apply stored adjustments (extraPay/refund) at payment time to the original
+        // total
         Room room = booking.getRoom();
         if (room == null || room.getRoomType() == null || room.getRoomType().getProperty() == null) {
             throw new IllegalStateException("Booking is not associated with a property");
@@ -476,7 +502,8 @@ public class AccommodationBookingRestService {
         int refund = booking.getRefund() == null ? 0 : booking.getRefund();
         // At payment, refund reduces the amount to be paid
         int payTotal = oldTotal + extraPay - refund;
-        if (payTotal < 0) payTotal = 0;
+        if (payTotal < 0)
+            payTotal = 0;
         booking.setTotalPrice(payTotal);
 
         // Add profit equal to the new total price
@@ -484,6 +511,35 @@ public class AccommodationBookingRestService {
         int profit = property.getProfit() == null ? 0 : property.getProfit();
         property.setProfit(profit + payTotal);
         propertyRepository.save(property);
+
+        // Debit customer saldo when payment is applied (if linked to real Customer)
+        if (booking.getCustomerId() != null) {
+            try {
+                var maybeCust = customerService.findById(booking.getCustomerId());
+                if (maybeCust.isPresent()) {
+                    var cust = maybeCust.get();
+                    long currSaldo = cust.getSaldo() == null ? 0L : cust.getSaldo();
+                    // Prevent negative saldo: require sufficient saldo to cover payment
+                    if (currSaldo < (long) payTotal) {
+                        throw new ResponseStatusException(
+                                HttpStatus.PAYMENT_REQUIRED,
+                                "Insufficient customer saldo to complete payment");
+                    }
+                    long newSaldo = currSaldo - (long) payTotal;
+                    // Clamp to zero as a safety (shouldn't be negative due to check)
+                    if (newSaldo < 0)
+                        newSaldo = 0L;
+                    cust.setSaldo(newSaldo);
+                    customerService.update(cust);
+                }
+            } catch (ResponseStatusException rse) {
+                // propagate balance-related response status up
+                throw rse;
+            } catch (Exception ex) {
+                // Do not fail the payment if customer update (non-balance error) fails; log if
+                // logging available
+            }
+        }
 
         // Reset adjustments after applying
         booking.setExtraPay(0);
@@ -513,14 +569,19 @@ public class AccommodationBookingRestService {
         int profit = property.getProfit() != null ? property.getProfit() : 0;
         int totalPrice = booking.getTotalPrice() != null ? booking.getTotalPrice() : 0;
 
+        int refundToCustomer = 0;
         if (status == 0) {
             // No income recognized yet; just cancel
         } else if (status == 1) {
+            // Paid -> remove recognized income and refund full paid amount to customer
             profit = profit - totalPrice;
+            refundToCustomer = totalPrice;
         } else if (status == 3) {
-            // Income previously recognized; pending refund that would reduce later
-            // On cancel, remove recognized income fully
+            // Refund-requested: remove recognized income and refund either refund amount
+            // (if set) or full total
             profit = profit - totalPrice;
+            refundToCustomer = booking.getRefund() != null && booking.getRefund() > 0 ? booking.getRefund()
+                    : totalPrice;
         }
 
         property.setProfit(Math.max(0, profit));
@@ -529,6 +590,22 @@ public class AccommodationBookingRestService {
         booking.setRefund(0);
 
         propertyRepository.save(property);
+
+        // Credit customer saldo for refunds when applicable
+        if (refundToCustomer > 0 && booking.getCustomerId() != null) {
+            try {
+                var maybeCust = customerService.findById(booking.getCustomerId());
+                if (maybeCust.isPresent()) {
+                    var cust = maybeCust.get();
+                    long currSaldo = cust.getSaldo() == null ? 0L : cust.getSaldo();
+                    cust.setSaldo(currSaldo + (long) refundToCustomer);
+                    customerService.update(cust);
+                }
+            } catch (Exception ex) {
+                // swallow to avoid failing cancel flow; log if infrastructure available
+            }
+        }
+
         booking = bookingRepository.save(booking);
         return AccommodationBookingMapper.toDto(booking);
     }
@@ -540,9 +617,11 @@ public class AccommodationBookingRestService {
         AccommodationBooking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new NoSuchElementException("Booking not found with ID: " + bookingId));
 
-        // Allow refund action when a refund amount exists (>0). Typically status 3, but tolerate 1 as well.
+        // Allow refund action when a refund amount exists (>0). Typically status 3, but
+        // tolerate 1 as well.
         Integer st = booking.getStatus();
-        if (st == null) st = 0;
+        if (st == null)
+            st = 0;
         if (!(st == 1 || st == 3)) {
             throw new IllegalStateException("Refund can only be processed for bookings with status 1 or 3");
         }
@@ -550,7 +629,8 @@ public class AccommodationBookingRestService {
         if (refund <= 0) {
             throw new IllegalArgumentException("Refund amount must be greater than 0");
         }
-        // Reduce property's profit by refund amount and reduce booking's total; status returns to 1
+        // Reduce property's profit by refund amount and reduce booking's total; status
+        // returns to 1
         Room room = booking.getRoom();
         if (room == null || room.getRoomType() == null || room.getRoomType().getProperty() == null) {
             throw new IllegalStateException("Booking is not associated with a property");
@@ -559,6 +639,22 @@ public class AccommodationBookingRestService {
         int profit = property.getProfit() == null ? 0 : property.getProfit();
         property.setProfit(Math.max(0, profit - refund));
         propertyRepository.save(property);
+
+        // Credit customer with refund amount
+        if (refund > 0 && booking.getCustomerId() != null) {
+            try {
+                var maybeCust = customerService.findById(booking.getCustomerId());
+                if (maybeCust.isPresent()) {
+                    var cust = maybeCust.get();
+                    long currSaldo = cust.getSaldo() == null ? 0L : cust.getSaldo();
+                    cust.setSaldo(currSaldo + (long) refund);
+                    customerService.update(cust);
+                }
+            } catch (Exception ex) {
+                // Do not fail refund if customer update fails; log if possible
+            }
+        }
+
         int newTotal = Math.max(0, (booking.getTotalPrice() == null ? 0 : booking.getTotalPrice()) - refund);
         booking.setTotalPrice(newTotal);
         booking.setRefund(0);
@@ -572,10 +668,11 @@ public class AccommodationBookingRestService {
             throw new IllegalArgumentException("month and year are required");
         }
 
-        // Build per-property monthly income from bookings where check-in month/year match
+        // Build per-property monthly income from bookings where check-in month/year
+        // match
         var properties = propertyRepository.findByDeletedAtIsNull();
-        java.util.Map<String, Integer> incomeByProperty = new java.util.LinkedHashMap<>();
-        java.util.Map<String, Property> propById = new java.util.LinkedHashMap<>();
+        Map<String, Integer> incomeByProperty = new LinkedHashMap<>();
+        Map<String, Property> propById = new LinkedHashMap<>();
         for (var p : properties) {
             incomeByProperty.put(p.getPropertyId(), 0);
             propById.put(p.getPropertyId(), p);
@@ -583,35 +680,42 @@ public class AccommodationBookingRestService {
 
         var bookings = bookingRepository.findAll();
         for (AccommodationBooking b : bookings) {
-            if (b.getRoom() == null || b.getRoom().getRoomType() == null || b.getRoom().getRoomType().getProperty() == null)
+            if (b.getRoom() == null || b.getRoom().getRoomType() == null
+                    || b.getRoom().getRoomType().getProperty() == null)
                 continue;
             var prop = b.getRoom().getRoomType().getProperty();
             var checkIn = b.getCheckInDate();
-            if (checkIn == null) continue;
-            if (checkIn.getYear() != year) continue;
-            if (checkIn.getMonthValue() != month) continue;
+            if (checkIn == null)
+                continue;
+            if (checkIn.getYear() != year)
+                continue;
+            if (checkIn.getMonthValue() != month)
+                continue;
 
             int status = b.getStatus() == null ? 0 : b.getStatus();
             // Recognized income for the month: include paid/done bookings
-            // Exclude 0 (waiting), 2 (canceled). For 3 (refund requested), keep previously recognized total for now.
+            // Exclude 0 (waiting), 2 (canceled). For 3 (refund requested), keep previously
+            // recognized total for now.
             if (status == 1 || status == 4 || status == 3) {
                 int amt = b.getTotalPrice() == null ? 0 : b.getTotalPrice();
-                // If status 3 and refund already set, reflect net if desired; otherwise, keep recognized value
-                // We'll subtract refund only if it has been applied to totalPrice elsewhere (our service does upon refund)
+                // If status 3 and refund already set, reflect net if desired; otherwise, keep
+                // recognized value
+                // We'll subtract refund only if it has been applied to totalPrice elsewhere
+                // (our service does upon refund)
                 incomeByProperty.computeIfPresent(prop.getPropertyId(), (k, v) -> v + amt);
             }
         }
 
         // Prepare labels/data/items aligned
-        List<String> labels = new java.util.ArrayList<>();
-        List<Integer> data = new java.util.ArrayList<>();
-        List<Map<String, Object>> items = new java.util.ArrayList<>();
+        List<String> labels = new ArrayList<>();
+        List<Integer> data = new ArrayList<>();
+        List<Map<String, Object>> items = new ArrayList<>();
         for (var p : properties) {
             String pid = p.getPropertyId();
             int income = incomeByProperty.getOrDefault(pid, 0);
             labels.add(p.getPropertyName());
             data.add(income);
-            Map<String, Object> m = new java.util.HashMap<>();
+            Map<String, Object> m = new HashMap<>();
             m.put("propertyId", pid);
             m.put("propertyName", p.getPropertyName());
             m.put("type", p.getType());
@@ -619,7 +723,7 @@ public class AccommodationBookingRestService {
             items.add(m);
         }
 
-        Map<String, Object> result = new java.util.HashMap<>();
+        Map<String, Object> result = new HashMap<>();
         result.put("month", month);
         result.put("year", year);
         result.put("labels", labels);
@@ -631,9 +735,11 @@ public class AccommodationBookingRestService {
     }
 
     /**
-     * Process bookings whose check-in is today (Asia/Jakarta) and update statuses per spec:
+     * Process bookings whose check-in is today (Asia/Jakarta) and update statuses
+     * per spec:
      * - status 1 (paid) -> 4 (done), profit unchanged
-     * - status 0 with extraPay>0 -> auto-cancel, profit reduced by amount already paid (handled by cancelBooking)
+     * - status 0 with extraPay>0 -> auto-cancel, profit reduced by amount already
+     * paid (handled by cancelBooking)
      * - status 3 (refund requested) -> mark done and reduce profit by refund
      * Returns number of affected bookings.
      */
@@ -643,7 +749,8 @@ public class AccommodationBookingRestService {
         var all = bookingRepository.findAll();
         int changed = 0;
         for (AccommodationBooking b : all) {
-            if (b.getCheckInDate() == null) continue;
+            if (b.getCheckInDate() == null)
+                continue;
             LocalDateTime normIn = DateUtil.normalizeCheckIn(b.getCheckInDate());
             if (normIn.toLocalDate().isEqual(todayCheckInAnchor.toLocalDate())) {
                 int st = b.getStatus() == null ? 0 : b.getStatus();
@@ -680,17 +787,18 @@ public class AccommodationBookingRestService {
         return changed;
     }
 
-    public java.util.List<CustomerSummaryResponseDTO> getCustomers() {
+    public List<CustomerSummaryResponseDTO> getCustomers() {
         var bookings = bookingRepository.findAll();
-        java.util.Map<String, CustomerSummaryResponseDTO> map = new java.util.LinkedHashMap<>();
+        Map<String, CustomerSummaryResponseDTO> map = new LinkedHashMap<>();
         for (AccommodationBooking b : bookings) {
             if (b.getCustomerId() != null) {
                 String id = b.getCustomerId().toString();
                 if (!map.containsKey(id)) {
-                    map.put(id, new CustomerSummaryResponseDTO(id, b.getCustomerName(), b.getCustomerEmail(), b.getCustomerPhone()));
+                    map.put(id, new CustomerSummaryResponseDTO(id, b.getCustomerName(), b.getCustomerEmail(),
+                            b.getCustomerPhone()));
                 }
             }
         }
-        return new java.util.ArrayList<>(map.values());
+        return new ArrayList<>(map.values());
     }
 }

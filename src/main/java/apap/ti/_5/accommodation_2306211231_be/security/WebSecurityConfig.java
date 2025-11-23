@@ -31,7 +31,8 @@ import java.io.IOException;
 @EnableWebSecurity
 public class WebSecurityConfig {
 
-	@Autowired @Lazy
+	@Autowired
+	@Lazy
 	private UserDetailsService userDetailsService; // provided by ProfileUserDetailsService
 
 	@Autowired
@@ -43,32 +44,62 @@ public class WebSecurityConfig {
 	@Order(1)
 	public SecurityFilterChain jwtFilterChain(HttpSecurity http) throws Exception {
 		http.securityMatcher("/api/**")
-			.cors(Customizer.withDefaults())
-			.csrf(csrf -> csrf.disable())
-			.authorizeHttpRequests(requests -> requests
-				
-				// always allow preflight requests
-				.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-				// Auth endpoints - note: already matched /api/**, so use relative paths
-				.requestMatchers(HttpMethod.POST, "/auth/**").permitAll()
-				.requestMatchers(HttpMethod.GET, "/auth/**").permitAll()
+				.cors(Customizer.withDefaults())
+				.csrf(csrf -> csrf.disable())
+				.authorizeHttpRequests(requests -> requests
 
-				.anyRequest().permitAll() // temporary: allow all until RBAC rules defined
-			)
-			.sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-			.addFilterBefore(jwtTokenFilter, UsernamePasswordAuthenticationFilter.class)
-			.exceptionHandling(e -> e
-				.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
-				.accessDeniedHandler(new AccessDeniedHandler() {
-					@Override
-					public void handle(HttpServletRequest request, HttpServletResponse response,
-									   org.springframework.security.access.AccessDeniedException accessDeniedException)
-							throws IOException, ServletException {
-						response.setStatus(HttpServletResponse.SC_FORBIDDEN);
-						response.getWriter().write("Forbidden");
-					}
-				})
-			);
+						// always allow preflight requests
+						.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+
+						.requestMatchers(HttpMethod.POST, "/auth/**").permitAll()
+						.requestMatchers(HttpMethod.GET, "/auth/**").permitAll()
+
+						// Property endpoints RBAC
+						.requestMatchers(HttpMethod.GET, "/api/property/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER", "CUSTOMER")
+						.requestMatchers(HttpMethod.POST, "/api/property/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER")
+						.requestMatchers(HttpMethod.PUT, "/api/property/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER")
+						.requestMatchers(HttpMethod.DELETE, "/api/property/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER")
+
+						// RoomType endpoints RBAC
+						.requestMatchers(HttpMethod.GET, "/api/roomtype/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER", "CUSTOMER")
+						.requestMatchers(HttpMethod.POST, "/api/roomtype/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER")
+						.requestMatchers(HttpMethod.PUT, "/api/roomtype/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER")
+						.requestMatchers(HttpMethod.DELETE, "/api/roomtype/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER")
+
+						// Room endpoints RBAC
+						.requestMatchers(HttpMethod.GET, "/api/room/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER", "CUSTOMER")
+						.requestMatchers(HttpMethod.POST, "/api/room/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER")
+						.requestMatchers(HttpMethod.PUT, "/api/room/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER")
+						.requestMatchers(HttpMethod.DELETE, "/api/room/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER")
+
+						// Booking endpoints RBAC
+						.requestMatchers(HttpMethod.GET, "/api/bookings/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER", "CUSTOMER")
+						.requestMatchers(HttpMethod.POST, "/api/bookings/create/**").hasAuthority("CUSTOMER")
+						.requestMatchers(HttpMethod.POST, "/api/bookings/create").hasAuthority("CUSTOMER")
+						.requestMatchers(HttpMethod.PUT, "/api/bookings/update").hasAuthority("CUSTOMER")
+						.requestMatchers(HttpMethod.POST, "/api/bookings/status/pay").hasAuthority("API_KEY")
+						.requestMatchers(HttpMethod.POST, "/api/bookings/status/cancel").hasAuthority("CUSTOMER")
+						.requestMatchers(HttpMethod.POST, "/api/bookings/status/refund").hasAuthority("CUSTOMER")
+
+						// Booking review endpoints RBAC
+						.requestMatchers(HttpMethod.GET, "/api/bookings/reviews/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER", "CUSTOMER")
+						.requestMatchers(HttpMethod.GET, "/api/bookings/reviews").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER", "CUSTOMER")
+						.requestMatchers(HttpMethod.POST, "/api/bookings/reviews/create").hasAuthority("CUSTOMER")
+						
+						.anyRequest().authenticated())
+				.sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+				.addFilterBefore(jwtTokenFilter, UsernamePasswordAuthenticationFilter.class)
+				.exceptionHandling(e -> e
+						.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
+						.accessDeniedHandler(new AccessDeniedHandler() {
+							@Override
+							public void handle(HttpServletRequest request, HttpServletResponse response,
+									org.springframework.security.access.AccessDeniedException accessDeniedException)
+									throws IOException, ServletException {
+								response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+								response.getWriter().write("Forbidden");
+							}
+						}));
 
 		return http.build();
 	}
@@ -78,26 +109,23 @@ public class WebSecurityConfig {
 	@Order(2)
 	public SecurityFilterChain webFilterChain(HttpSecurity http) throws Exception {
 		http.securityMatcher(request -> !request.getRequestURI().startsWith("/api"))
-			.csrf(Customizer.withDefaults())
-			.authorizeHttpRequests(requests -> requests
-				.requestMatchers("/css/**", "/js/**", "/login").permitAll()
-				.anyRequest().permitAll() // temporary: allow all until RBAC rules defined
+				.csrf(Customizer.withDefaults())
+				.authorizeHttpRequests(requests -> requests
+						.requestMatchers("/css/**", "/js/**", "/login").permitAll()
+						.anyRequest().permitAll() // temporary: allow all until RBAC rules defined
 				// change to .authenticated() to require login
-			)
-			.formLogin(form -> form
-				.loginPage("/login")
-				.permitAll()
-				.defaultSuccessUrl("/")
-			)
-			.logout(logout -> logout
-				.logoutUrl("/logout")
-				.logoutSuccessUrl("/login")
-			)
-			.exceptionHandling(handling -> handling
-				.accessDeniedHandler((request, response, accessDeniedException) -> {
-					response.sendRedirect("/access-denied");
-				})
-			);
+				)
+				.formLogin(form -> form
+						.loginPage("/login")
+						.permitAll()
+						.defaultSuccessUrl("/"))
+				.logout(logout -> logout
+						.logoutUrl("/logout")
+						.logoutSuccessUrl("/login"))
+				.exceptionHandling(handling -> handling
+						.accessDeniedHandler((request, response, accessDeniedException) -> {
+							response.sendRedirect("/access-denied");
+						}));
 
 		return http.build();
 	}
@@ -113,7 +141,7 @@ public class WebSecurityConfig {
 		return new BCryptPasswordEncoder();
 	}
 
-// Removed in-memory users; now using persistent profile tables.
+	// Removed in-memory users; now using persistent profile tables.
 
 	@Autowired
 	public void configAuthentication(AuthenticationManagerBuilder auth) throws Exception {
