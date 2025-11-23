@@ -10,6 +10,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
+
+import apap.ti._5.accommodation_2306211231_be.security.service.JwtTokenBlacklist;
  
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
@@ -24,6 +27,9 @@ public class JwtUtils {
  
     @Value("${travel-apap-accommodation-be.app.jwtExpirationMs}")
     private int jwtExpirationMs;
+
+    @Autowired(required = false)
+    private JwtTokenBlacklist jwtTokenBlacklist;
  
     public String generateJwtToken(UUID id, String username, String email, String name, List<String> roles) {
         return Jwts.builder()
@@ -72,6 +78,11 @@ public class JwtUtils {
     public boolean validateJwtToken(String authToken){
         try{
             Jwts.parser().verifyWith(Keys.hmacShaKeyFor(jwtSecret.getBytes())).build().parseSignedClaims(authToken);
+            // Check blacklist (revoked tokens)
+            if (jwtTokenBlacklist != null && jwtTokenBlacklist.isRevoked(authToken)) {
+                logger.error("JWT token is revoked");
+                return false;
+            }
             return true;
         }catch(SignatureException e){
             logger.error("Invalid JWT signature: {}", e.getMessage());
@@ -85,6 +96,17 @@ public class JwtUtils {
             logger.error("JWT token is unsupported: {}", e.getMessage());
         }
         return false;
+    }
+
+    public java.util.Date getExpirationFromJwtToken(String token) {
+        try {
+            JwtParser jwtParser = Jwts.parser().verifyWith(Keys.hmacShaKeyFor(jwtSecret.getBytes())).build();
+            Claims claims = jwtParser.parseSignedClaims(token).getPayload();
+            return claims.getExpiration();
+        } catch (Exception e) {
+            logger.error("Failed to parse expiration from token: {}", e.getMessage());
+            return null;
+        }
     }
  
     public String getCurrentUsername() {

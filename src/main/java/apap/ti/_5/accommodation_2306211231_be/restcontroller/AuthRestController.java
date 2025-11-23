@@ -1,22 +1,8 @@
 package apap.ti._5.accommodation_2306211231_be.restcontroller;
 
-import apap.ti._5.accommodation_2306211231_be.models.profile.EndUser;
-import apap.ti._5.accommodation_2306211231_be.restdto.BaseRequestDto;
-import apap.ti._5.accommodation_2306211231_be.restdto.BaseResponseDto;
-import apap.ti._5.accommodation_2306211231_be.restdto.request.auth.LoginRequestDTO;
-import apap.ti._5.accommodation_2306211231_be.restdto.request.auth.RegisterRequestDTO;
-import apap.ti._5.accommodation_2306211231_be.restdto.response.auth.LoginResponseDTO;
-import apap.ti._5.accommodation_2306211231_be.restdto.response.auth.LogoutResponseDTO;
-import apap.ti._5.accommodation_2306211231_be.restdto.response.auth.RegisterResponseDTO;
-import apap.ti._5.accommodation_2306211231_be.restdto.request.auth.TokenRefreshRequestDTO;
+import java.time.Instant;
+import java.util.List;
 
-import apap.ti._5.accommodation_2306211231_be.security.jwt.JwtUtils;
-import apap.ti._5.accommodation_2306211231_be.restservice.AuthRestService;
-import apap.ti._5.accommodation_2306211231_be.security.service.JwtTokenService;
-import apap.ti._5.accommodation_2306211231_be.util.ResponseUtil;
-import apap.ti._5.accommodation_2306211231_be.restmapper.AuthMapper;
-
-import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -25,13 +11,26 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.time.Instant;
-import java.util.List;
+import apap.ti._5.accommodation_2306211231_be.models.profile.EndUser;
+import apap.ti._5.accommodation_2306211231_be.restdto.BaseRequestDto;
+import apap.ti._5.accommodation_2306211231_be.restdto.BaseResponseDto;
+import apap.ti._5.accommodation_2306211231_be.restdto.request.auth.LoginRequestDTO;
+import apap.ti._5.accommodation_2306211231_be.restdto.request.auth.RegisterRequestDTO;
+import apap.ti._5.accommodation_2306211231_be.restdto.request.auth.TokenRefreshRequestDTO;
+import apap.ti._5.accommodation_2306211231_be.restdto.response.auth.LoginResponseDTO;
+import apap.ti._5.accommodation_2306211231_be.restdto.response.auth.LogoutResponseDTO;
+import apap.ti._5.accommodation_2306211231_be.restdto.response.auth.RegisterResponseDTO;
+import apap.ti._5.accommodation_2306211231_be.restmapper.AuthMapper;
+import apap.ti._5.accommodation_2306211231_be.restservice.AuthRestService;
+import apap.ti._5.accommodation_2306211231_be.security.jwt.JwtUtils;
+import apap.ti._5.accommodation_2306211231_be.security.service.JwtTokenService;
+import apap.ti._5.accommodation_2306211231_be.util.ResponseUtil;
+import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/auth")
@@ -99,26 +98,30 @@ public class AuthRestController {
 
     @PostMapping("/refresh")
     public ResponseEntity<BaseResponseDto<LoginResponseDTO>> refreshToken(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestBody BaseRequestDto<TokenRefreshRequestDTO> request
     ) {
         if (request.getData() == null) {
             return ResponseUtil.error("Missing data object", HttpStatus.BAD_REQUEST);
         }
-        // if not authenticated, return error
-        if (SecurityContextHolder.getContext().getAuthentication() == null || !SecurityContextHolder.getContext().getAuthentication().isAuthenticated()) {
-            return ResponseUtil.error("User not authenticated", HttpStatus.UNAUTHORIZED);
-        }
 
+        // Extract username/email from request body
         TokenRefreshRequestDTO dto = request.getData();
-        String token = dto.getToken();
         String reqUsername = dto.getUsername();
         String reqEmail = dto.getEmail();
 
-        if (token == null || token.isBlank()) {
-            return ResponseUtil.error("Missing token", HttpStatus.BAD_REQUEST);
-        }
         if (reqUsername == null || reqUsername.isBlank() || reqEmail == null || reqEmail.isBlank()) {
             return ResponseUtil.error("Missing username or email in request", HttpStatus.BAD_REQUEST);
+        }
+
+        // Extract token from Authorization header (Bearer token)
+        if (authorization == null || !authorization.startsWith("Bearer ")) {
+            return ResponseUtil.error("Missing or invalid Authorization header", HttpStatus.BAD_REQUEST);
+        }
+
+        String token = authorization.substring(7).trim();
+        if (token == null || token.isBlank()) {
+            return ResponseUtil.error("Missing token", HttpStatus.BAD_REQUEST);
         }
 
         // Delegate to JwtTokenService which validates token, checks user and issues a new token
