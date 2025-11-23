@@ -13,7 +13,6 @@ import apap.ti._5.accommodation_2306211231_be.restdto.BaseResponseDto;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.profile.EndUserResponseDTO;
 import apap.ti._5.accommodation_2306211231_be.restdto.request.profile.EndUserUpdateRequestDTO;
 import apap.ti._5.accommodation_2306211231_be.restservice.profile.EndUserRestService;
-import apap.ti._5.accommodation_2306211231_be.models.profile.Customer;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.profile.CustomerResponseDTO;
 
 import org.springframework.http.HttpStatus;
@@ -32,10 +31,11 @@ public class EndUserRestController {
     private final EndUserRestService endUserRestService;
 
     @GetMapping("/users")
-    public ResponseEntity<BaseResponseDto<List<EndUserResponseDTO>>> getAllEndUsers(@RequestParam(required = false) String role) {
+    public ResponseEntity<BaseResponseDto<List<EndUserResponseDTO>>> getAllEndUsers(
+            @RequestParam(required = false) String role) {
         try {
             List<EndUserResponseDTO> users = endUserRestService.getAllEndUsersByRole(role);
-            return ResponseUtil.success(users, "OK", HttpStatus.OK);
+            return ResponseUtil.success(users, "OK", HttpStatus.OK).toBuilder().build();
         } catch (org.springframework.security.access.AccessDeniedException ex) {
             return ResponseUtil.error("Forbidden: only SUPERADMIN can access", HttpStatus.FORBIDDEN);
         } catch (Exception ex) {
@@ -45,25 +45,25 @@ public class EndUserRestController {
 
     @GetMapping("/customers")
     public ResponseEntity<BaseResponseDto<List<CustomerResponseDTO>>> getAllCustomers(
-        @RequestParam(required = false) String name,
-        @RequestParam(required = false) String email
-    ) {
-      try {
-          List<CustomerResponseDTO> customers = endUserRestService.getAllCustomersFiltered(name, email);
-          return ResponseUtil.success(customers, "OK", HttpStatus.OK);
-      } catch (AccessDeniedException ex) {
-          return ResponseUtil.error("You are not authorized to access this resource.", HttpStatus.FORBIDDEN);
-      } catch (Exception ex) {
-          return ResponseUtil.error("Failed to fetch customers", HttpStatus.INTERNAL_SERVER_ERROR);
-      }
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) String email) {
+        try {
+            List<CustomerResponseDTO> customers = endUserRestService.getAllCustomersFiltered(name, email);
+            return ResponseUtil.success(customers, "OK", HttpStatus.OK).toBuilder().build();
+        } catch (AccessDeniedException ex) {
+            return ResponseUtil.error("You are not authorized to access this resource.", HttpStatus.FORBIDDEN);
+        } catch (Exception ex) {
+            return ResponseUtil.error("Failed to fetch customers", HttpStatus.INTERNAL_SERVER_ERROR);
+        }
     }
 
     @GetMapping("/{identifier}")
     public ResponseEntity<BaseResponseDto<EndUserResponseDTO>> getEndUserByIdentifier(@PathVariable String identifier) {
         try {
             EndUserResponseDTO result = endUserRestService.getEndUserDtoByIdentifier(identifier);
-            if (result == null) return ResponseUtil.error("User not found", HttpStatus.NOT_FOUND);
-            return ResponseUtil.success(result, "OK", HttpStatus.OK);
+            if (result == null)
+                return ResponseUtil.error("User not found", HttpStatus.NOT_FOUND);
+            return ResponseUtil.success(result, "OK", HttpStatus.OK).toBuilder().build();
         } catch (Exception ex) {
             return ResponseUtil.error("Failed to fetch user detail", HttpStatus.INTERNAL_SERVER_ERROR);
         }
@@ -72,11 +72,10 @@ public class EndUserRestController {
     @PutMapping("/{identifier}")
     public ResponseEntity<BaseResponseDto<EndUserResponseDTO>> updateEndUser(
             @PathVariable String identifier,
-            @RequestBody EndUserUpdateRequestDTO dto
-    ) {
+            @RequestBody EndUserUpdateRequestDTO dto) {
         try {
             EndUserResponseDTO updated = endUserRestService.updateEndUser(identifier, dto);
-            return ResponseUtil.success(updated, "Updated", HttpStatus.OK);
+            return ResponseUtil.success(updated, "Updated", HttpStatus.OK).toBuilder().build();
         } catch (AccessDeniedException ex) {
             return ResponseUtil.error("You are not authorized to update this user.", HttpStatus.FORBIDDEN);
         } catch (IllegalArgumentException ex) {

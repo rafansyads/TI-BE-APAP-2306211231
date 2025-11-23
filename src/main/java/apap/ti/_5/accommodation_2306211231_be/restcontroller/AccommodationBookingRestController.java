@@ -29,19 +29,23 @@ public class AccommodationBookingRestController {
 
     // Stubs only – service methods will be implemented later
     @GetMapping
-    public ResponseEntity<BaseResponseDto<List<AccommodationBookingDto>>> listBookings() {
+    public ResponseEntity<BaseResponseDto<ArrayList<AccommodationBookingDto>>> listBookings() {
         try {
-            List<AccommodationBookingDto> bookings = bookingService.getAllBookingsDto();
-            if (bookings == null || bookings.isEmpty()) {
+            var bookingsList = bookingService.getAllBookingsDto();
+            ArrayList<AccommodationBookingDto> bookings = bookingsList == null
+                    ? new ArrayList<>()
+                    : new ArrayList<>(bookingsList);
+
+            if (bookings.isEmpty()) {
                 return ResponseUtil.success(
                         new ArrayList<AccommodationBookingDto>(),
                         "[GET] No bookings found",
-                        HttpStatus.OK);
+                        HttpStatus.OK).toBuilder().build();
             }
             return ResponseUtil.success(
                     bookings,
                     "[GET] All bookings retrieved successfully with total count: " + bookings.size(),
-                    HttpStatus.OK);
+                    HttpStatus.OK).toBuilder().build();
         } catch (Exception ex) {
             return ResponseUtil.error(
                     "An error occurred while fetching bookings: " + ex.getMessage(),
@@ -57,7 +61,7 @@ public class AccommodationBookingRestController {
         return ResponseUtil.success(
                 payload,
                 "[POST] Processed check-in for today, total changed: " + changed,
-                HttpStatus.OK);
+                HttpStatus.OK).toBuilder().build();
     }
 
     @GetMapping("/{id}")
@@ -67,7 +71,7 @@ public class AccommodationBookingRestController {
             return ResponseUtil.success(
                     dto,
                     "[GET] Booking retrieved successfully for ID: " + id,
-                    HttpStatus.OK);
+                    HttpStatus.OK).toBuilder().build();
         } catch (NoSuchElementException ex) {
             return ResponseUtil.error(
                     ex.getMessage(),
@@ -83,7 +87,7 @@ public class AccommodationBookingRestController {
             return ResponseUtil.success(
                     dto,
                     "[POST] Booking created successfully",
-                    HttpStatus.CREATED);
+                    HttpStatus.CREATED).toBuilder().build();
         } catch (Exception ex) {
             return ResponseUtil.error(
                     "An error occurred while creating booking: " + ex.getMessage(),
@@ -100,7 +104,7 @@ public class AccommodationBookingRestController {
             return ResponseUtil.success(
                     dto,
                     "[POST] Booking created successfully with Room ID: " + idRoom,
-                    HttpStatus.CREATED);
+                    HttpStatus.CREATED).toBuilder().build();
         } catch (Exception ex) {
             return ResponseUtil.error(
                     "An error occurred while creating booking: " + ex.getMessage(),
@@ -118,7 +122,7 @@ public class AccommodationBookingRestController {
             return ResponseUtil.success(
                     dto,
                     "[PUT] Booking with ID: " + request.getData().getBookingId() + " updated successfully",
-                    HttpStatus.OK);
+                    HttpStatus.OK).toBuilder().build();
         } catch (Exception ex) {
             return ResponseUtil.error(
                     "An error occurred while updating booking: " + ex.getMessage(),
@@ -134,7 +138,7 @@ public class AccommodationBookingRestController {
             return ResponseUtil.success(
                     dto,
                     "[POST] Booking with ID: " + request.getData().getBookingId() + " marked as paid successfully",
-                    HttpStatus.OK);
+                    HttpStatus.OK).toBuilder().build();
         } catch (Exception ex) {
             return ResponseUtil.error(
                     "An error occurred while marking booking as paid: " + ex.getMessage(),
@@ -150,7 +154,7 @@ public class AccommodationBookingRestController {
             return ResponseUtil.success(
                     dto,
                     "[POST] Booking with ID: " + request.getData().getBookingId() + " cancelled successfully",
-                    HttpStatus.OK);
+                    HttpStatus.OK).toBuilder().build();
         } catch (Exception ex) {
             return ResponseUtil.error(
                     "An error occurred while cancelling booking: " + ex.getMessage(),
@@ -166,7 +170,7 @@ public class AccommodationBookingRestController {
             return ResponseUtil.success(
                     dto,
                     "[POST] Booking with ID: " + request.getData().getBookingId() + " refunded successfully",
-                    HttpStatus.OK);
+                    HttpStatus.OK).toBuilder().build();
         } catch (Exception ex) {
             return ResponseUtil.error(
                     "An error occurred while refunding booking: " + ex.getMessage(),
@@ -176,15 +180,14 @@ public class AccommodationBookingRestController {
 
     @GetMapping("/chart")
     public ResponseEntity<BaseResponseDto<Map<String, Object>>> getBookingChart(
-        @RequestParam(value = "month", required = true) Integer month,
-        @RequestParam(value = "year", required = true) Integer year
-    ) {
+            @RequestParam(value = "month", required = true) Integer month,
+            @RequestParam(value = "year", required = true) Integer year) {
         try {
             Map<String, Object> chartData = bookingService.getBookingChart(month, year);
             return ResponseUtil.success(
                     chartData,
                     "[GET] Booking chart data retrieved successfully for " + month + "/" + year,
-                    HttpStatus.OK);
+                    HttpStatus.OK).toBuilder().build();
         } catch (Exception ex) {
             return ResponseUtil.error(
                     "An error occurred while fetching booking chart: " + ex.getMessage(),
@@ -196,9 +199,12 @@ public class AccommodationBookingRestController {
     public ResponseEntity<BaseResponseDto<java.util.List<CustomerSummaryResponseDTO>>> listCustomers() {
         try {
             var customers = bookingService.getCustomers();
-            return ResponseUtil.success(customers, "[GET] Customers retrieved successfully", HttpStatus.OK);
+            return ResponseUtil.success(customers, "[GET] Customers retrieved successfully", HttpStatus.OK)
+                    .toBuilder()
+                    .build();
         } catch (Exception ex) {
-            return ResponseUtil.error("An error occurred while fetching customers: " + ex.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
+            return ResponseUtil.error("An error occurred while fetching customers: " + ex.getMessage(),
+                    HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 }

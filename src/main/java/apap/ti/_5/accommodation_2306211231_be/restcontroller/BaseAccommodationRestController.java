@@ -36,7 +36,7 @@ public class BaseAccommodationRestController {
                 ),
                 "[GET] Welcome to Travel APAP Accommodation Service API",
                 HttpStatus.OK
-            );
+            ).toBuilder().build();
 
         } catch (Exception e) {
             return ResponseUtil.<Map<String, Long>>error(
@@ -54,7 +54,7 @@ public class BaseAccommodationRestController {
                 provinces,
                 "[GET] List of provinces fetched successfully.",
                 HttpStatus.OK
-            );
+            ).toBuilder().build();
         } catch (Exception e) {
             return ResponseUtil.<Map<Integer, String>>error(
                 "An error occurred while fetching provinces.",

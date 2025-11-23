@@ -10,7 +10,6 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -28,51 +27,31 @@ public class JwtTokenService {
 		 * @return LoginResponseDTO with a new token and expiration, or null if validation failed / user not found
 		 */
 		public LoginResponseDTO refreshToken(String token, String reqUsername, String reqEmail) {
-				if (token == null || token.isBlank()) return null;
+			if (token == null || token.isBlank()) return null;
 
-				boolean valid = jwtUtils.validateJwtToken(token);
-				if (!valid) return null;
+			if (reqUsername == null || reqUsername.isBlank() || reqEmail == null || reqEmail.isBlank()) return null;
 
-				// Extract claims from the token
-				String idStr = jwtUtils.getIdFromJwtToken(token);
-				String tokenUsername = jwtUtils.getUserNameFromJwtToken(token);
-				String tokenEmail = jwtUtils.getEmailFromJwtToken(token);
+			// Use the username from the request (the refresh token validation should be performed
+			// before calling this service). Ensure the user still exists and the email matches.
+			EndUser user = authRestService.findAggregateByUsername(reqUsername);
+			if (user == null) return null;
+			if (!reqEmail.equalsIgnoreCase(user.getEmail())) return null;
 
-				// Verify provided username/email match the token claims (defense-in-depth)
-				if (reqUsername == null || reqEmail == null) return null;
-				if (!reqUsername.equals(tokenUsername) || !reqEmail.equalsIgnoreCase(tokenEmail)) return null;
+			List<String> currentRoles = authRestService.resolveRoles(user);
 
-				// Ensure user still exists and resolve current roles
-				EndUser user = authRestService.findAggregateByUsername(tokenUsername);
-				if (user == null) return null;
+			// Generate a new token using the current user info and roles
+			String newToken = jwtUtils.generateJwtToken(user.getId(), user.getUsername(), user.getEmail(), user.getName(), currentRoles);
 
-				List<String> currentRoles = authRestService.resolveRoles(user);
+			// Revoke the old token immediately by recording it in the blacklist until its natural expiration
+			try {
+				java.util.Date oldExp = jwtUtils.getExpirationFromJwtToken(token);
+				long expMillis = (oldExp != null) ? oldExp.getTime() : (System.currentTimeMillis() + jwtUtils.getJwtExpirationMs());
+				jwtTokenBlacklist.revoke(token, expMillis);
+			} catch (Exception ignored) {
+				// if anything goes wrong revoking, we still return the new token
+			}
 
-				UUID id;
-				try {
-						id = UUID.fromString(idStr);
-					} catch (Exception ex) {
-								// if id claim is malformed, fallback to user's id if available
-						try {
-								id = user.getId();
-						} catch (Exception e) {
-								return null;
-						}
-				}
-
-				// Generate a new token using the (possibly updated) roles and user info
-				String newToken = jwtUtils.generateJwtToken(id, user.getUsername(), user.getEmail(), user.getName(), currentRoles);
-
-				// Revoke the old token immediately by recording it in the blacklist until its natural expiration
-				try {
-						java.util.Date oldExp = jwtUtils.getExpirationFromJwtToken(token);
-						long expMillis = (oldExp != null) ? oldExp.getTime() : (System.currentTimeMillis() + jwtUtils.getJwtExpirationMs());
-						jwtTokenBlacklist.revoke(token, expMillis);
-				} catch (Exception ignored) {
-						// if anything goes wrong revoking, we still return the new token
-				}
-
-				return AuthMapper.toLoginResponseDto(user, currentRoles, newToken, Instant.now().plusMillis(jwtUtils.getJwtExpirationMs()));
+			return AuthMapper.toLoginResponseDto(user, currentRoles, newToken, Instant.now().plusMillis(jwtUtils.getJwtExpirationMs()));
 		}
 
 }

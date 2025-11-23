@@ -30,23 +30,27 @@ public class PropertyRestController {
 
     /**
      * List all properties
+     * 
      * @return ResponseEntity with list of PropertySummaryDto
      * @exception Exception when any error occurs
      */
     @GetMapping
-    public ResponseEntity<BaseResponseDto<List<PropertySummaryDto>>> listProperties() {
+    public ResponseEntity<BaseResponseDto<ArrayList<PropertySummaryDto>>> listProperties() {
         try {
-            List<PropertySummaryDto> properties = propertyService.getAllPropertiesDto();
-            if (properties == null || properties.isEmpty()) {
+            List<PropertySummaryDto> list = propertyService.getAllPropertiesDto();
+            ArrayList<PropertySummaryDto> properties = (list == null) ? new ArrayList<>() : new ArrayList<>(list);
+
+            if (properties.isEmpty()) {
                 return ResponseUtil.success(
-                        new ArrayList<PropertySummaryDto>(),
+                        properties,
                         "[GET] No properties found",
-                        HttpStatus.OK);
+                        HttpStatus.OK).toBuilder().build();
             }
+
             return ResponseUtil.success(
                     properties,
                     "[GET] All properties retrieved successfully with total count: " + properties.size(),
-                    HttpStatus.OK);
+                    HttpStatus.OK).toBuilder().build();
         } catch (Exception ex) {
             return ResponseUtil.error(
                     "An error occurred while fetching properties: " + ex.getMessage(),
@@ -55,16 +59,17 @@ public class PropertyRestController {
     }
 
     /**
-     * Helper endpoint to predict next propertyId (and sequence) before creating a property.
-     * Clients can use this to pre-compute roomTypeId (<SEQ>-<name>-<floor>) when multiple room types exist.
+     * Helper endpoint to predict next propertyId (and sequence) before creating a
+     * property.
+     * Clients can use this to pre-compute roomTypeId (<SEQ>-<name>-<floor>) when
+     * multiple room types exist.
      *
      * Example: GET /api/property/predict?type=1&ownerId=<uuid>
      */
     @GetMapping("/predict")
     public ResponseEntity<BaseResponseDto<Map<String, Object>>> predictPropertyId(
             @RequestParam("type") int type,
-            @RequestParam("ownerId") String ownerId
-    ) {
+            @RequestParam("ownerId") String ownerId) {
         try {
             UUID ownerUuid = UUID.fromString(ownerId);
             int nextSeq = propertyService.predictNextPropertySequence();
@@ -78,8 +83,7 @@ public class PropertyRestController {
             return ResponseUtil.success(
                     payload,
                     "Predicted propertyId generated successfully",
-                    HttpStatus.OK
-            );
+                    HttpStatus.OK).toBuilder().build();
         } catch (IllegalArgumentException e) {
             return ResponseUtil.error("Invalid ownerId UUID", HttpStatus.BAD_REQUEST);
         } catch (Exception e) {
@@ -98,8 +102,9 @@ public class PropertyRestController {
                     : propertyService.getPropertyDetailDto(id);
             return ResponseUtil.success(
                     dto,
-                    "[GET] The property details retrieved successfully" + (checkIn != null && checkOut != null ? " with availability filter" : ""),
-                    HttpStatus.OK);
+                    "[GET] The property details retrieved successfully"
+                            + (checkIn != null && checkOut != null ? " with availability filter" : ""),
+                    HttpStatus.OK).toBuilder().build();
         } catch (IllegalArgumentException ex) {
             return ResponseUtil.error(ex.getMessage(), HttpStatus.NOT_FOUND);
         }
@@ -113,7 +118,7 @@ public class PropertyRestController {
             return ResponseUtil.success(
                     dto,
                     "[POST] The property details created successfully",
-                    HttpStatus.CREATED);
+                    HttpStatus.CREATED).toBuilder().build();
         } catch (IllegalArgumentException ex) {
             return ResponseUtil.error(ex.getMessage(), HttpStatus.BAD_REQUEST);
         }
@@ -128,7 +133,7 @@ public class PropertyRestController {
             return ResponseUtil.success(
                     dto,
                     "[PUT] The property details updated successfully",
-                    HttpStatus.OK);
+                    HttpStatus.OK).toBuilder().build();
         } catch (IllegalArgumentException ex) {
             return ResponseUtil.error(
                     ex.getMessage(),
@@ -141,11 +146,11 @@ public class PropertyRestController {
             @Validated @RequestBody BaseRequestDto<RoomTypeCreateRequest> request) {
         try {
             String propertyId = request.getData().getPropertyId();
-        PropertyDetailDto dto = propertyService.updatePropertyRooms(propertyId, request.getData());
+            PropertyDetailDto dto = propertyService.updatePropertyRooms(propertyId, request.getData());
             return ResponseUtil.success(
                     dto,
                     "[POST] The property rooms updated successfully",
-                    HttpStatus.OK);
+                    HttpStatus.OK).toBuilder().build();
         } catch (IllegalArgumentException ex) {
             return ResponseUtil.error(
                     ex.getMessage(),
@@ -161,7 +166,7 @@ public class PropertyRestController {
             return ResponseUtil.success(
                     dto,
                     "[POST] The maintenance schedule added successfully",
-                    HttpStatus.OK);
+                    HttpStatus.OK).toBuilder().build();
         } catch (IllegalArgumentException ex) {
             return ResponseUtil.error(
                     ex.getMessage(),
@@ -170,13 +175,15 @@ public class PropertyRestController {
     }
 
     /**
-     * Recompute and persist totalRoom for a property by counting all rooms under it.
+     * Recompute and persist totalRoom for a property by counting all rooms under
+     * it.
      */
     @PostMapping("/recompute-totalrooms/{id}")
     public ResponseEntity<BaseResponseDto<PropertyDetailDto>> recomputeTotalRooms(@PathVariable("id") String id) {
         try {
             PropertyDetailDto dto = propertyService.recomputeTotalRooms(id);
-            return ResponseUtil.success(dto, "[POST] Recomputed totalRoom successfully", HttpStatus.OK);
+            return ResponseUtil.success(dto, "[POST] Recomputed totalRoom successfully", HttpStatus.OK).toBuilder()
+                    .build();
         } catch (IllegalArgumentException ex) {
             return ResponseUtil.error(ex.getMessage(), HttpStatus.NOT_FOUND);
         }
@@ -189,25 +196,25 @@ public class PropertyRestController {
     public ResponseEntity<BaseResponseDto<List<OwnerSummaryDto>>> listOwners() {
         try {
             List<OwnerSummaryDto> owners = propertyService.getOwners();
-            return ResponseUtil.success(owners, "[GET] Owners retrieved successfully", HttpStatus.OK);
+            return ResponseUtil.success(owners, "[GET] Owners retrieved successfully", HttpStatus.OK).toBuilder()
+                    .build();
         } catch (Exception ex) {
             return ResponseUtil.error("Failed to fetch owners", HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
-
     @DeleteMapping("/delete/{id}")
     public ResponseEntity<BaseResponseDto<Void>> softDeleteProperty(@PathVariable("id") String id) {
         try {
             propertyService.softDeleteProperty(id);
-            return ResponseUtil.success(
-                null, 
-                "[DELETE] The property details marked as deleted successfully (soft-delete)", 
-                HttpStatus.OK);
+            return ResponseUtil.<Void>success(
+                    null,
+                    "[DELETE] The property details marked as deleted successfully (soft-delete)",
+                    HttpStatus.OK).toBuilder().build();
         } catch (IllegalArgumentException ex) {
             return ResponseUtil.error(
-                ex.getMessage(), 
-                HttpStatus.NOT_FOUND);
+                    ex.getMessage(),
+                    HttpStatus.NOT_FOUND);
         }
     }
 }
