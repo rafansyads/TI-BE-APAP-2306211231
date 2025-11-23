@@ -1,6 +1,9 @@
 
 **Jawaban Tugas (Soal 2 - 11)**
 
+**NOTE:** Deployment TI di GitHub: https://github.com/rafansyads/TI-BE-APAP-2306211231 dan https://github.com/rafansyads/TI-FE-APAP-2306211231
+Deployment Sidating App tetap di GitLab. Selanjutnya, deployment TI akan direncanakan di GitLab.
+
 1. **Deployment Result**
 
 **Hasil Deploy (TI):**
