@@ -81,7 +81,7 @@ public class AuthRestService {
 		String roleUpper = payload.getRole() == null ? "CUSTOMER" : payload.getRole().toUpperCase();
 		switch (roleUpper) {
 			case "ACCOMMODATION_OWNER":
-				apap.ti._5.accommodation_2306211231_be.models.profile.AccommodationOwner ao = new apap.ti._5.accommodation_2306211231_be.models.profile.AccommodationOwner();
+				AccommodationOwner ao = new apap.ti._5.accommodation_2306211231_be.models.profile.AccommodationOwner();
 				ao.setUsername(payload.getUsername());
 				ao.setPassword(passwordEncoder.encode(payload.getPassword()));
 				ao.setName(payload.getName());

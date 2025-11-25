@@ -27,6 +27,7 @@ public class DataSeeder implements CommandLineRunner {
     private final InsuranceProviderRepository insuranceProviderRepository;
     private final TourPackageVendorRepository tourPackageVendorRepository;
     private final BCryptPasswordEncoder passwordEncoder;
+    private final AccommodationOwnerRepository accommodationOwnerRepository;
 
     private static final String[] HOTEL_TYPES = {"Single Room","Double Room","Deluxe Room","Superior Room","Suite","Family Room"};
     private static final String[] VILLA_TYPES = {"Luxury","Beachfront","Mountside","Eco-friendly","Romantic"};
@@ -119,6 +120,19 @@ public class DataSeeder implements CommandLineRunner {
                 tour.setEmail("tour" + (i + 1) + "@example.com");
                 tour.setGender(i % 2 == 0);
                 tourPackageVendorRepository.save(tour);
+            }
+        }
+
+        // Seed accommodation owner
+        if (accommodationOwnerRepository.count() == 0) {
+            for (int i = 1; i <= 3; i++) {
+                AccommodationOwner owner = new AccommodationOwner();
+                owner.setUsername("owner" + i);
+                owner.setPassword(passwordEncoder.encode("owner" + i));
+                owner.setName("Accommodation Owner " + i);
+                owner.setEmail("owner" + i + "@example.com");
+                owner.setGender(i % 2 == 0);
+                accommodationOwnerRepository.save(owner);
             }
         }
 
