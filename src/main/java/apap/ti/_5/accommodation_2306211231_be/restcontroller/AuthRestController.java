@@ -162,16 +162,6 @@ public class AuthRestController {
             return ResponseUtil.error("Missing username or email in request", HttpStatus.BAD_REQUEST);
         }
 
-        // Extract token from Authorization header (Bearer token)
-        if (authorization == null || !authorization.startsWith("Bearer ")) {
-            return ResponseUtil.error("Missing or invalid Authorization header", HttpStatus.BAD_REQUEST);
-        }
-
-        String token = authorization.substring(7).trim();
-        if (token == null || token.isBlank()) {
-            return ResponseUtil.error("Missing token", HttpStatus.BAD_REQUEST);
-        }
-
         // Refresh token must be supplied in header and validated
         if (refreshHeader == null || refreshHeader.isBlank()) {
             return ResponseUtil.error("Missing Refresh-Token header", HttpStatus.BAD_REQUEST);
@@ -182,11 +172,31 @@ public class AuthRestController {
             return ResponseUtil.error("Invalid or expired refresh token", HttpStatus.UNAUTHORIZED);
         }
 
-        // Delegate to JwtTokenService which validates token, checks user and issues a
-        // new token
-        LoginResponseDTO refreshed = jwtTokenService.refreshToken(token, reqUsername, reqEmail);
+        LoginResponseDTO refreshed = null;
+
+        // If Authorization header provided, prefer delegated refresh flow validating existing token
+        if (authorization != null && authorization.startsWith("Bearer ")) {
+            String token = authorization.substring(7).trim();
+            if (token != null && !token.isBlank()) {
+                refreshed = jwtTokenService.refreshToken(token, reqUsername, reqEmail);
+            }
+        }
+
+        // If refreshed still null, perform refresh-only flow: issue a new access token based on
+        // the username/email and roles associated with the user. This lets clients that only
+        // hold a refresh token recover an access token after restart.
         if (refreshed == null) {
-            return ResponseUtil.error("Invalid or expired token, or user not authorized", HttpStatus.UNAUTHORIZED);
+            try {
+                var user = authRestService.findAggregateByUsername(reqUsername);
+                if (user == null) {
+                    return ResponseUtil.error("User not found", HttpStatus.UNAUTHORIZED);
+                }
+                var roles = authRestService.resolveRoles(user);
+                String token = jwtUtils.generateJwtToken(user.getId(), user.getUsername(), user.getEmail(), user.getName(), roles);
+                refreshed = AuthMapper.toLoginResponseDto(user, roles, token, Instant.now().plusMillis(jwtUtils.getJwtExpirationMs()));
+            } catch (Exception e) {
+                return ResponseUtil.error("Unable to refresh token", HttpStatus.UNAUTHORIZED);
+            }
         }
 
         // Using LoginResponseDTO because it contains token and expiry info

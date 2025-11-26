@@ -55,36 +55,39 @@ public class WebSecurityConfig {
 						.requestMatchers(HttpMethod.GET, "/auth/**").permitAll()
 
 						// Property endpoints RBAC
-						.requestMatchers(HttpMethod.GET, "/api/property/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER", "CUSTOMER")
-						.requestMatchers(HttpMethod.POST, "/api/property/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER")
-						.requestMatchers(HttpMethod.PUT, "/api/property/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER")
-						.requestMatchers(HttpMethod.DELETE, "/api/property/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER")
+						.requestMatchers(HttpMethod.GET, "/property/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER", "CUSTOMER")
+						.requestMatchers(HttpMethod.POST, "/property/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER")
+						.requestMatchers(HttpMethod.PUT, "/property/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER")
+						.requestMatchers(HttpMethod.DELETE, "/property/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER")
 
 						// RoomType endpoints RBAC
-						.requestMatchers(HttpMethod.GET, "/api/roomtype/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER", "CUSTOMER")
-						.requestMatchers(HttpMethod.POST, "/api/roomtype/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER")
-						.requestMatchers(HttpMethod.PUT, "/api/roomtype/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER")
-						.requestMatchers(HttpMethod.DELETE, "/api/roomtype/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER")
+						.requestMatchers(HttpMethod.GET, "/roomtype/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER", "CUSTOMER")
+						.requestMatchers(HttpMethod.POST, "/roomtype/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER")
+						.requestMatchers(HttpMethod.PUT, "/roomtype/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER")
+						.requestMatchers(HttpMethod.DELETE, "/roomtype/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER")
 
 						// Room endpoints RBAC
-						.requestMatchers(HttpMethod.GET, "/api/room/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER", "CUSTOMER")
-						.requestMatchers(HttpMethod.POST, "/api/room/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER")
-						.requestMatchers(HttpMethod.PUT, "/api/room/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER")
-						.requestMatchers(HttpMethod.DELETE, "/api/room/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER")
+						.requestMatchers(HttpMethod.GET, "/room/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER", "CUSTOMER")
+						.requestMatchers(HttpMethod.POST, "/room/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER")
+						.requestMatchers(HttpMethod.PUT, "/room/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER")
+						.requestMatchers(HttpMethod.DELETE, "/room/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER")
 
 						// Booking endpoints RBAC
-						.requestMatchers(HttpMethod.GET, "/api/bookings/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER", "CUSTOMER")
-						.requestMatchers(HttpMethod.POST, "/api/bookings/create/**").hasAuthority("CUSTOMER")
-						.requestMatchers(HttpMethod.POST, "/api/bookings/create").hasAuthority("CUSTOMER")
-						.requestMatchers(HttpMethod.PUT, "/api/bookings/update").hasAuthority("CUSTOMER")
-						.requestMatchers(HttpMethod.POST, "/api/bookings/status/pay").hasAuthority("API_KEY")
-						.requestMatchers(HttpMethod.POST, "/api/bookings/status/cancel").hasAuthority("CUSTOMER")
-						.requestMatchers(HttpMethod.POST, "/api/bookings/status/refund").hasAuthority("CUSTOMER")
+						.requestMatchers(HttpMethod.GET, "/bookings/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER", "CUSTOMER")
+						.requestMatchers(HttpMethod.POST, "/bookings/create/**").hasAuthority("CUSTOMER")
+						.requestMatchers(HttpMethod.POST, "/bookings/create").hasAuthority("CUSTOMER")
+						.requestMatchers(HttpMethod.PUT, "/bookings/update").hasAuthority("CUSTOMER")
+						.requestMatchers(HttpMethod.POST, "/bookings/status/pay").hasAuthority("API_KEY")
+						.requestMatchers(HttpMethod.POST, "/bookings/status/cancel").hasAuthority("CUSTOMER")
+						.requestMatchers(HttpMethod.POST, "/bookings/status/refund").hasAuthority("CUSTOMER")
 
 						// Booking review endpoints RBAC
-						.requestMatchers(HttpMethod.GET, "/api/bookings/reviews/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER", "CUSTOMER")
-						.requestMatchers(HttpMethod.GET, "/api/bookings/reviews").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER", "CUSTOMER")
-						.requestMatchers(HttpMethod.POST, "/api/bookings/reviews/create").hasAuthority("CUSTOMER")
+						.requestMatchers(HttpMethod.GET, "/bookings/reviews/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER", "CUSTOMER")
+						.requestMatchers(HttpMethod.GET, "/bookings/reviews").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER", "CUSTOMER")
+						.requestMatchers(HttpMethod.POST, "/bookings/reviews/create").hasAuthority("CUSTOMER")
+
+						// Statistics endpoints RBAC
+						.requestMatchers(HttpMethod.GET, "/statistics/**").hasAnyAuthority("SUPERADMIN", "ACCOMMODATION_OWNER")
 						
 						.anyRequest().authenticated())
 				.sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
