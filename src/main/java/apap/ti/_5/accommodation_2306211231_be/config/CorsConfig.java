@@ -1,17 +1,10 @@
 package apap.ti._5.accommodation_2306211231_be.config;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
-import org.springframework.lang.NonNull;
-import org.springframework.beans.factory.annotation.Value;
-
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.web.servlet.config.annotation.CorsRegistry;
-import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
-import org.springframework.beans.factory.annotation.Value;
 
 @Configuration
 public class CorsConfig {
@@ -39,7 +32,7 @@ public class CorsConfig {
 					.allowedOrigins(origins)
 					.allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
 					.allowedHeaders("*")
-					.exposedHeaders("Authorization")
+					.exposedHeaders("Authorization", "X-Forward-Token")
 					.allowCredentials(true)
 					.maxAge(3600); // cache pre-flight for 1 hour
 			}

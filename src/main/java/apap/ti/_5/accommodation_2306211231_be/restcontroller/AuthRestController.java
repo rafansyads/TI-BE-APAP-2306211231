@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import lombok.RequiredArgsConstructor;
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -26,6 +27,7 @@ import apap.ti._5.accommodation_2306211231_be.restdto.BaseResponseDto;
 import apap.ti._5.accommodation_2306211231_be.restdto.request.auth.LoginRequestDTO;
 import apap.ti._5.accommodation_2306211231_be.restdto.request.auth.RegisterRequestDTO;
 import apap.ti._5.accommodation_2306211231_be.restdto.request.auth.TokenRefreshRequestDTO;
+import apap.ti._5.accommodation_2306211231_be.restdto.request.auth.ForwardRequestDTO;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.auth.LoginResponseDTO;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.auth.LogoutResponseDTO;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.auth.RegisterResponseDTO;
@@ -227,5 +229,77 @@ public class AuthRestController {
         }
 
         return ResponseUtil.success(refreshed, "Token refreshed", HttpStatus.OK).toBuilder().headers(headers).build();
+    }
+
+    @PostMapping("/forward")
+    public ResponseEntity<BaseResponseDto<String>> forwardToExternal(
+            @RequestBody BaseRequestDto<ForwardRequestDTO> request,
+            HttpServletRequest servletRequest) {
+        if (request.getData() == null) {
+            return ResponseUtil.error("Missing data object", HttpStatus.BAD_REQUEST);
+        }
+
+        ForwardRequestDTO payload = request.getData();
+        String targetUrl = payload.getTargetUrl();
+        if (targetUrl == null || targetUrl.isBlank()) {
+            return ResponseUtil.error("Missing targetUrl in payload", HttpStatus.BAD_REQUEST);
+        }
+
+        // Resolve current authenticated user. Prefer SecurityContext if present.
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || auth.getName() == null) {
+            return ResponseUtil.error("Unauthenticated request", HttpStatus.UNAUTHORIZED);
+        }
+
+        var user = authRestService.findAggregateByUsername(auth.getName());
+        if (user == null) {
+            return ResponseUtil.error("User not found", HttpStatus.UNAUTHORIZED);
+        }
+        var roles = authRestService.resolveRoles(user);
+
+        // Create an access token for the user to send to the target (short-lived if possible)
+        String token = jwtUtils.generateJwtToken(user.getId(), user.getUsername(), user.getEmail(), user.getName(), roles);
+
+        // Build a minimal HTML page with an auto-submitting POST form. The access token is placed in
+        // a hidden field named `accessToken`. Additional params from request will also be included.
+        StringBuilder html = new StringBuilder();
+        html.append("<!doctype html><html><head><meta charset='utf-8'><title>Redirecting</title></head>");
+        html.append("<body onload='document.forms[0].submit()'>\n");
+        html.append("<form method='post' action='").append(htmlEscape(targetUrl)).append("'>\n");
+        html.append("<input type='hidden' name='accessToken' value='").append(htmlEscape(token)).append("' />\n");
+
+        if (payload.getParams() != null) {
+            for (var e : payload.getParams().entrySet()) {
+                String k = e.getKey();
+                String v = e.getValue();
+                if (k == null) continue;
+                html.append("<input type='hidden' name='").append(htmlEscape(k)).append("' value='").append(htmlEscape(v)).append("' />\n");
+            }
+        }
+
+        html.append("<noscript><p>JavaScript is required to complete authentication. <button type='submit'>Continue</button></p></noscript>");
+        html.append("</form></body></html>");
+
+        HttpHeaders headers = new HttpHeaders();
+        // If the frontend forwarded an Authorization header, resume it and include in the response headers
+        String incomingAuth = servletRequest.getHeader("Authorization");
+        if (incomingAuth != null && !incomingAuth.isBlank()) {
+            headers.set("Authorization", incomingAuth);
+        }
+
+        // Also include a header to indicate the token we embedded for forwarding (if caller wants it)
+        headers.set("X-Forward-Token", token);
+
+        // Return the HTML as the response payload (string) wrapped in BaseResponseDto JSON.
+        return ResponseUtil.success(html.toString(), "Forward HTML generated", HttpStatus.OK)
+                .toBuilder()
+                .headers(headers)
+                .build();
+    }
+
+    private String htmlEscape(String s) {
+        if (s == null) return "";
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                .replace("\"", "&quot;").replace("'", "&#x27;");
     }
 }
