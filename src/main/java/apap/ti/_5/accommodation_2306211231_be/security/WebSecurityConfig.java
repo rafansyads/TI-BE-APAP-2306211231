@@ -1,6 +1,7 @@
 package apap.ti._5.accommodation_2306211231_be.security;
 
-import apap.ti._5.accommodation_2306211231_be.security.jwt.JwtTokenFilter;
+import java.io.IOException;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -22,10 +23,10 @@ import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
+import apap.ti._5.accommodation_2306211231_be.security.jwt.JwtTokenFilter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import java.io.IOException;
 
 @Configuration
 @EnableWebSecurity
@@ -57,6 +58,9 @@ public class WebSecurityConfig {
 
 						.requestMatchers(HttpMethod.POST, "/auth/**").permitAll()
 						.requestMatchers(HttpMethod.GET, "/auth/**").permitAll()
+
+						// Profile endpoints RBAC
+						.requestMatchers(HttpMethod.GET, "/profile/**").authenticated()
 
 						// Property endpoints RBAC: allow only SUPERADMIN, ACCOMMODATION_OWNER, CUSTOMER
 						// Check both plain and ROLE_ prefixed authorities to avoid mismatch depending

@@ -17,6 +17,7 @@ import apap.ti._5.accommodation_2306211231_be.restservice.CustomerRestService;
 import apap.ti._5.accommodation_2306211231_be.util.ResponseUtil;
 import apap.ti._5.accommodation_2306211231_be.restmapper.AccommodationBookingMapper;
 import apap.ti._5.accommodation_2306211231_be.restservice.AuthRestService;
+import apap.ti._5.accommodation_2306211231_be.models.AccommodationReview;
 
 import lombok.RequiredArgsConstructor;
 
@@ -103,13 +104,13 @@ public class AccommodationBookingRestController {
     }
 
     @GetMapping("/reviews")
-    public ResponseEntity<BaseResponseDto<java.util.List<AccommodationReviewDTO>>> listReviewsByCustomer(
+    public ResponseEntity<BaseResponseDto<List<AccommodationReviewDTO>>> listReviewsByCustomer(
             @RequestParam(value = "customerID", required = true) String customerIdStr) {
         try {
             if (customerIdStr == null || customerIdStr.isBlank()) {
                 return ResponseUtil.error("customerID is required", HttpStatus.BAD_REQUEST);
             }
-            java.util.UUID custId = java.util.UUID.fromString(customerIdStr.trim());
+            UUID custId = UUID.fromString(customerIdStr.trim());
 
             var auth = SecurityContextHolder.getContext().getAuthentication();
             boolean isCustomer = auth != null && auth.getAuthorities().stream()
@@ -213,9 +214,9 @@ public class AccommodationBookingRestController {
             }
 
             // Build review entity
-            apap.ti._5.accommodation_2306211231_be.models.AccommodationReview review =
-                    apap.ti._5.accommodation_2306211231_be.models.AccommodationReview.builder()
-                    .reviewId(java.util.UUID.randomUUID().toString())
+            AccommodationReview review =
+                    AccommodationReview.builder()
+                    .reviewId(UUID.randomUUID().toString())
                     .booking(booking)
                     .property(booking.getRoom().getRoomType().getProperty())
                     .customer(customerService.findById(booking.getCustomerId()).orElse(null))
@@ -240,7 +241,7 @@ public class AccommodationBookingRestController {
     @PostMapping("/status/process-checkin")
     public ResponseEntity<BaseResponseDto<Map<String, Object>>> processCheckInToday() {
         int changed = bookingService.processCheckInToday();
-        Map<String, Object> payload = new java.util.HashMap<>();
+        Map<String, Object> payload = new HashMap<>();
         payload.put("changed", changed);
         return ResponseUtil.success(
                 payload,
@@ -417,7 +418,7 @@ public class AccommodationBookingRestController {
     }
 
     @GetMapping("/customers")
-    public ResponseEntity<BaseResponseDto<java.util.List<CustomerSummaryResponseDTO>>> listCustomers() {
+    public ResponseEntity<BaseResponseDto<List<CustomerSummaryResponseDTO>>> listCustomers() {
         try {
             var customers = bookingService.getCustomers();
             return ResponseUtil.success(customers, "[GET] Customers retrieved successfully", HttpStatus.OK)
