@@ -1,30 +1,42 @@
 package apap.ti._5.accommodation_2306211231_be.restservice.profile;
 
-import apap.ti._5.accommodation_2306211231_be.models.profile.*;
-import apap.ti._5.accommodation_2306211231_be.repository.profile.*;
-import apap.ti._5.accommodation_2306211231_be.restdto.response.profile.EndUserResponseDTO;
-import apap.ti._5.accommodation_2306211231_be.restservice.AuthRestService;
-import apap.ti._5.accommodation_2306211231_be.restdto.response.profile.CustomerResponseDTO;
-import apap.ti._5.accommodation_2306211231_be.restmapper.EndUserMapper;
-import apap.ti._5.accommodation_2306211231_be.restmapper.CustomerMapper;
-import apap.ti._5.accommodation_2306211231_be.restdto.request.profile.EndUserUpdateRequestDTO;
-import apap.ti._5.accommodation_2306211231_be.restdto.request.profile.CustomerGetSaldoRequestDTO;
-import apap.ti._5.accommodation_2306211231_be.restdto.request.profile.CustomerSetSaldoRequestDTO;
-import apap.ti._5.accommodation_2306211231_be.restdto.response.profile.CustomerSaldoResponseDTO;
-
-import lombok.RequiredArgsConstructor;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.transaction.annotation.Transactional;
+
+import apap.ti._5.accommodation_2306211231_be.models.profile.AccommodationOwner;
+import apap.ti._5.accommodation_2306211231_be.models.profile.Customer;
+import apap.ti._5.accommodation_2306211231_be.models.profile.EndUser;
+import apap.ti._5.accommodation_2306211231_be.models.profile.FlightAirline;
+import apap.ti._5.accommodation_2306211231_be.models.profile.InsuranceProvider;
+import apap.ti._5.accommodation_2306211231_be.models.profile.RentalVendor;
+import apap.ti._5.accommodation_2306211231_be.models.profile.Superadmin;
+import apap.ti._5.accommodation_2306211231_be.models.profile.TourPackageVendor;
+import apap.ti._5.accommodation_2306211231_be.repository.profile.AccommodationOwnerRepository;
+import apap.ti._5.accommodation_2306211231_be.repository.profile.CustomerRepository;
+import apap.ti._5.accommodation_2306211231_be.repository.profile.FlightAirlineRepository;
+import apap.ti._5.accommodation_2306211231_be.repository.profile.InsuranceProviderRepository;
+import apap.ti._5.accommodation_2306211231_be.repository.profile.RentalVendorRepository;
+import apap.ti._5.accommodation_2306211231_be.repository.profile.SuperadminRepository;
+import apap.ti._5.accommodation_2306211231_be.repository.profile.TourPackageVendorRepository;
+import apap.ti._5.accommodation_2306211231_be.restdto.request.profile.CustomerGetSaldoRequestDTO;
+import apap.ti._5.accommodation_2306211231_be.restdto.request.profile.CustomerSetSaldoRequestDTO;
+import apap.ti._5.accommodation_2306211231_be.restdto.request.profile.EndUserUpdateRequestDTO;
+import apap.ti._5.accommodation_2306211231_be.restdto.response.profile.CustomerResponseDTO;
+import apap.ti._5.accommodation_2306211231_be.restdto.response.profile.CustomerSaldoResponseDTO;
+import apap.ti._5.accommodation_2306211231_be.restdto.response.profile.EndUserResponseDTO;
+import apap.ti._5.accommodation_2306211231_be.restmapper.CustomerMapper;
+import apap.ti._5.accommodation_2306211231_be.restmapper.EndUserMapper;
+import apap.ti._5.accommodation_2306211231_be.restservice.AuthRestService;
+import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
@@ -241,11 +253,12 @@ public class EndUserRestService {
 		}
 
 		// Apply updates: superadmin may update saldo; endusers may not.
-		if (dto.getUsername() != null && !dto.getUsername().isBlank()) target.setUsername(dto.getUsername().trim());
-		if (dto.getName() != null && !dto.getName().isBlank()) target.setName(dto.getName().trim());
-		if (dto.getPassword() != null && !dto.getPassword().isBlank()) target.setPassword(dto.getPassword());
-		if (dto.getEmail() != null && !dto.getEmail().isBlank()) target.setEmail(dto.getEmail().trim());
-		if (dto.getGender() != null) target.setGender(dto.getGender());
+		boolean updated = false;
+		if (dto.getUsername() != null && !dto.getUsername().isBlank()) { target.setUsername(dto.getUsername().trim()); updated = true; }
+		if (dto.getName() != null && !dto.getName().isBlank()) { target.setName(dto.getName().trim()); updated = true; }
+		if (dto.getPassword() != null && !dto.getPassword().isBlank()) { target.setPassword(dto.getPassword()); updated = true; }
+		if (dto.getEmail() != null && !dto.getEmail().isBlank()) { target.setEmail(dto.getEmail().trim()); updated = true; }
+		if (dto.getGender() != null) { target.setGender(dto.getGender()); updated = true; }
 
 		if (dto.getSaldo() != null) {
 			if (!isSuperadmin) {
@@ -253,6 +266,16 @@ public class EndUserRestService {
 			}
 			if (target instanceof Customer customer) {
 				customer.setSaldo(dto.getSaldo());
+				updated = true;
+			}
+		}
+
+		// if any mutable field changed, set updatedAt timestamp
+		if (updated) {
+			try {
+				target.setUpdatedAt(LocalDateTime.now());
+			} catch (NoSuchMethodError | Exception ignored) {
+				// If entity doesn't have updatedAt setter, ignore silently
 			}
 		}
 
