@@ -240,13 +240,79 @@ public class AccommodationBookingRestController {
 
     @PostMapping("/status/process-checkin")
     public ResponseEntity<BaseResponseDto<Map<String, Object>>> processCheckInToday() {
-        int changed = bookingService.processCheckInToday();
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("changed", changed);
-        return ResponseUtil.success(
-                payload,
-                "[POST] Processed check-in for today, total changed: " + changed,
-                HttpStatus.OK).toBuilder().build();
+        try {
+            var auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth == null) return ResponseUtil.error("Unauthorized", HttpStatus.UNAUTHORIZED);
+
+            boolean isOwner = auth.getAuthorities().stream()
+                    .anyMatch(a -> a.getAuthority().equals("ACCOMMODATION_OWNER")
+                            || a.getAuthority().equals("ROLE_ACCOMMODATION_OWNER"));
+            boolean isSuper = auth.getAuthorities().stream()
+                    .anyMatch(a -> a.getAuthority().equals("SUPERADMIN") || a.getAuthority().equals("ROLE_SUPERADMIN"));
+
+            if (!isOwner && !isSuper) {
+                return ResponseUtil.error("Forbidden", HttpStatus.FORBIDDEN);
+            }
+
+            if (isOwner && !isSuper) {
+                String caller = auth.getName();
+                var ownerAgg = authRestService.findAggregateByUsername(caller);
+                if (ownerAgg == null || ownerAgg.getId() == null) {
+                    return ResponseUtil.error("Owner not found", HttpStatus.NOT_FOUND);
+                }
+                // owner is validated; bookingService currently processes globally.
+                // If service supports owner-scoped processing in future, pass ownerAgg.getId().
+            }
+            int changed = bookingService.processCheckInToday();
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("changed", changed);
+            return ResponseUtil.success(
+                    payload,
+                    "[POST] Processed check-in for today, total changed: " + changed,
+                    HttpStatus.OK).toBuilder().build();
+        } catch (Exception ex) {
+            return ResponseUtil.error(
+                    "An error occurred while processing check-in: " + ex.getMessage(),
+                    HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    @PostMapping("/status/process-checkout")
+    public ResponseEntity<BaseResponseDto<Map<String, Object>>> processCheckOutToday() {
+        try {
+            var auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth == null) return ResponseUtil.error("Unauthorized", HttpStatus.UNAUTHORIZED);
+
+            boolean isOwner = auth.getAuthorities().stream()
+                    .anyMatch(a -> a.getAuthority().equals("ACCOMMODATION_OWNER")
+                            || a.getAuthority().equals("ROLE_ACCOMMODATION_OWNER"));
+            boolean isSuper = auth.getAuthorities().stream()
+                    .anyMatch(a -> a.getAuthority().equals("SUPERADMIN") || a.getAuthority().equals("ROLE_SUPERADMIN"));
+
+            if (!isOwner && !isSuper) {
+                return ResponseUtil.error("Forbidden", HttpStatus.FORBIDDEN);
+            }
+
+            if (isOwner && !isSuper) {
+                String caller = auth.getName();
+                var ownerAgg = authRestService.findAggregateByUsername(caller);
+                if (ownerAgg == null || ownerAgg.getId() == null) {
+                    return ResponseUtil.error("Owner not found", HttpStatus.NOT_FOUND);
+                }
+                // owner validated; can scope service call to owner if supported later
+            }
+            int changed = bookingService.processCheckoutPastDue();
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("changed", changed);
+            return ResponseUtil.success(
+                    payload,
+                    "[POST] Processed check-out for past due, total changed: " + changed,
+                    HttpStatus.OK).toBuilder().build();
+        } catch (Exception ex) {
+            return ResponseUtil.error(
+                    "An error occurred while processing check-out: " + ex.getMessage(),
+                    HttpStatus.INTERNAL_SERVER_ERROR);
+        }
     }
 
     @GetMapping("/{id}")

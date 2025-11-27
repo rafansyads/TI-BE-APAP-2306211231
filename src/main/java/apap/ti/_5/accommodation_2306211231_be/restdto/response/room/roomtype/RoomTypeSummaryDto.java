@@ -3,10 +3,12 @@ package apap.ti._5.accommodation_2306211231_be.restdto.response.room.roomtype;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.Builder;
 
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@Builder
 public class RoomTypeSummaryDto {
     private String roomTypeId;
     private String name;

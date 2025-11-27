@@ -17,6 +17,7 @@ import apap.ti._5.accommodation_2306211231_be.util.ResponseUtil;
 import apap.ti._5.accommodation_2306211231_be.util.IdUtil;
 import apap.ti._5.accommodation_2306211231_be.restservice.AccommodationReviewRestService;
 import apap.ti._5.accommodation_2306211231_be.restmapper.AccommodationReviewMapper;
+import apap.ti._5.accommodation_2306211231_be.restmapper.PropertyMapper;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.accommodationbooking.AccommodationReviewDTO;
 
 import lombok.RequiredArgsConstructor;
@@ -66,7 +67,7 @@ public class PropertyRestController {
                 List<PropertySummaryDto> filtered = new ArrayList<>();
                 for (var p : props) {
                     if (p.getOwnerId() != null && p.getOwnerId().equals(user.getId())) {
-                        filtered.add(apap.ti._5.accommodation_2306211231_be.restmapper.PropertyMapper.toSummaryDto(p));
+                        filtered.add(PropertyMapper.toSummaryDto(p));
                     }
                 }
                 list = filtered;
@@ -220,9 +221,32 @@ public class PropertyRestController {
     @GetMapping("/{propertyId}/roomtype/{id}")
     public ResponseEntity<BaseResponseDto<RoomTypeDetailDto>> getRoomTypeById(
             @PathVariable("propertyId") String propertyId,
-            @PathVariable("id") String id) {
+            @PathVariable("id") String id,
+            @RequestParam(name = "checkIn", required = false) String checkIn,
+            @RequestParam(name = "checkOut", required = false) String checkOut
+        ) {
         try {
-            RoomTypeDetailDto dto = propertyService.getRoomTypeById(propertyId, id);
+            // pass date filters to service so availability can be computed per-room
+            RoomTypeDetailDto dto = propertyService.getRoomTypeById(propertyId, id, checkIn, checkOut);
+
+            // Authorization: mirror getProperty checks — owners can only access their own property's room types
+            var auth = SecurityContextHolder.getContext().getAuthentication();
+            String caller = (auth != null) ? auth.getName() : null;
+            boolean isOwner = auth != null && auth.getAuthorities().stream()
+                    .anyMatch(a -> a.getAuthority().equals("ACCOMMODATION_OWNER")
+                            || a.getAuthority().equals("ROLE_ACCOMMODATION_OWNER"));
+            boolean isSuper = auth != null && auth.getAuthorities().stream()
+                    .anyMatch(a -> a.getAuthority().equals("SUPERADMIN") || a.getAuthority().equals("ROLE_SUPERADMIN"));
+
+            if (isOwner && caller != null && !isSuper) {
+                // Ensure the owner only accesses their own property's room types
+                PropertyDetailDto pdto = propertyService.getPropertyDetailDto(propertyId);
+                if (pdto == null
+                        || (pdto.getOwnerName() != null && !pdto.getOwnerName().equals(caller)
+                            && (pdto.getOwnerId() == null || !pdto.getOwnerId().toString().equals(caller)))) {
+                    return ResponseUtil.error("Forbidden: owner cannot access this property", HttpStatus.FORBIDDEN);
+                }
+            }
             return ResponseUtil.success(
                     dto,
                     "[GET] The room types for the property retrieved successfully",

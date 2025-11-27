@@ -72,7 +72,7 @@ public class AccommodationBookingRestService {
     // throw new UnsupportedOperationException("Not implemented yet");
     // }
 
-    // DTO-based method signatures for controllers (stubs)
+    // DTO-based method signatures for controllers
     public List<AccommodationBookingDto> getAllBookingsDto() {
         return getAllBookings().stream()
                 .map(AccommodationBookingMapper::toDto)
@@ -200,6 +200,9 @@ public class AccommodationBookingRestService {
         // Set relation and persist
         booking.setRoom(room);
         booking = createBooking(booking);
+
+        // Add booking to room
+        addBookingToRoom(booking, room);
         return AccommodationBookingMapper.toDto(booking);
     }
 
@@ -291,6 +294,9 @@ public class AccommodationBookingRestService {
 
         // Save booking
         booking = createBooking(booking);
+
+        // Add booking to Room
+        addBookingToRoom(booking, room);
         return AccommodationBookingMapper.toDto(booking);
     }
 
@@ -486,6 +492,10 @@ public class AccommodationBookingRestService {
 
         // Persist
         existing = bookingRepository.save(existing);
+
+        // The existing booking in the Room repository should only change
+        // the attribute inside of it, so the Room does not need to remove and re-add
+        // the accommodation booking.
         return AccommodationBookingMapper.toDto(existing);
     }
 
@@ -803,11 +813,132 @@ public class AccommodationBookingRestService {
                         b.setStatus(2);
                         bookingRepository.save(b);
                         changed++;
+                        // also remove bookings from Room
+                        removeBookingFromRoom(b, b.getRoom());
                     }
                 }
             }
         }
         return changed;
+    }
+
+    /**
+     * Process Checkout past due bookings (Asia/Jakarta) and update statuses
+     * per spec:
+     * Only checkout date before now:
+     * - status 4 (done) -> no change
+     * - we could checkout before check-in date if the booking is canceled early
+     * but as per this moment, the refund is not processed
+     * - if after checkout, we still remove the booking from Room,
+     * but as per this moment, the extraPay is not processed
+     * - there should not be any other status than 4, but if there is any
+     * if status (1 / 3) then change to done, else (0 / 2) do nothing
+     * Returns number of affected bookings.
+     */
+    public int processCheckoutPastDue() {
+        LocalDateTime nowJakarta = ZonedDateTime.now(ZoneId.of("Asia/Jakarta")).toLocalDateTime();
+        var all = bookingRepository.findAll();
+        int changed = 0;
+        for (AccommodationBooking b : all) {
+            if (b.getCheckOutDate() == null)
+                continue;
+            if (b.getCheckOutDate().isBefore(nowJakarta)) {
+                int st = b.getStatus() == null ? 0 : b.getStatus();
+                if (st == 1) {
+                    b.setStatus(4); // done
+                    bookingRepository.save(b);
+                    changed++;
+                } else if (st == 3) {
+                    // auto-refund then mark done
+                    Room r = b.getRoom();
+                    if (r != null && r.getRoomType() != null && r.getRoomType().getProperty() != null) {
+                        Property prop = r.getRoomType().getProperty();
+                        int profit = prop.getProfit() == null ? 0 : prop.getProfit();
+                        int ref = b.getRefund() == null ? 0 : b.getRefund();
+                        prop.setProfit(Math.max(0, profit - ref));
+                        propertyRepository.save(prop);
+                        int newTotal = Math.max(0, (b.getTotalPrice() == null ? 0 : b.getTotalPrice()) - ref);
+                        b.setTotalPrice(newTotal);
+                        b.setRefund(0);
+                    }
+                    b.setStatus(4);
+                    bookingRepository.save(b);
+                    changed++;
+                }
+                // Remove booking from Room
+                removeBookingFromRoom(b, b.getRoom());
+            } else {
+                // Not yet past due, we can process checkout as per spec
+                // but check if the check in date is already past now
+                // if yes then continue, else do the operations
+                if (b.getCheckInDate() == null || b.getCheckInDate().isAfter(nowJakarta)) {
+                    continue;
+                }
+                int st = b.getStatus() == null ? 0 : b.getStatus();
+                if (st == 1) {
+                    b.setStatus(4); // done
+                    bookingRepository.save(b);
+                    changed++;
+                } else if (st == 3) {
+                    // auto-refund then mark done
+                    Room r = b.getRoom();
+                    if (r != null && r.getRoomType() != null && r.getRoomType().getProperty() != null) {
+                        Property prop = r.getRoomType().getProperty();
+                        int profit = prop.getProfit() == null ? 0 : prop.getProfit();
+                        int ref = b.getRefund() == null ? 0 : b.getRefund();
+                        prop.setProfit(Math.max(0, profit - ref));
+                        propertyRepository.save(prop);
+                        int newTotal = Math.max(0, (b.getTotalPrice() == null ? 0 : b.getTotalPrice()) - ref);
+                        b.setTotalPrice(newTotal);
+                        b.setRefund(0);
+                    }
+                    b.setStatus(4);
+                    bookingRepository.save(b);
+                    changed++;
+                }
+                // Remove booking from Room
+                removeBookingFromRoom(b, b.getRoom());
+            }
+        }
+        return changed;
+    }
+
+    /**
+     * Add bookings to Room
+     */
+    public void addBookingToRoom(AccommodationBooking book, Room room) {
+        room.addBooking(book);
+    }
+
+    /**
+     * Add several bookings to Room
+     */
+    public void addBookingsToRoom(List<AccommodationBooking> bookings, Room room) {
+        for (AccommodationBooking b : bookings) {
+            room.addBooking(b);
+        }
+    }
+
+    /**
+     * Remove bookings from Room
+     * Only invoked when the status is 2 or 4 after checkout Date
+     */
+    public void removeBookingFromRoom(AccommodationBooking book, Room room) {
+        if (book != null && book.getStatus() != null && (book.getStatus() == 2 || (book.getStatus() == 4 && book.getCheckOutDate() != null && book.getCheckOutDate().isBefore(LocalDateTime.now(ZoneId.of("Asia/Jakarta")))))) {
+            room.removeBooking(book);
+        }
+    }
+
+    /**
+     * Remove several bookings from Room
+     * Only invoked when the status is 2 or 4 after checkout Date
+     */
+    public void removeBookingsFromRoom(List<AccommodationBooking> bookings, Room room) {
+        for (AccommodationBooking b : bookings) {
+            if (b != null && b.getStatus() != null && (b.getStatus() == 2 || (b.getStatus() == 4 && b.getCheckOutDate() != null && b.getCheckOutDate().isBefore(LocalDateTime.now(ZoneId.of("Asia/Jakarta")))))) {
+                room.removeBooking(b);
+            }
+        }
     }
 
     /**

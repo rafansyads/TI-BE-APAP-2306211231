@@ -38,6 +38,7 @@ import apap.ti._5.accommodation_2306211231_be.restdto.response.property.OwnerSum
 import apap.ti._5.accommodation_2306211231_be.restdto.response.property.PropertyDetailDto;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.property.PropertySummaryDto;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.room.RoomDetailDto;
+import apap.ti._5.accommodation_2306211231_be.restdto.response.room.RoomSummaryDto;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.room.roomtype.RoomTypeDetailDto;
 import apap.ti._5.accommodation_2306211231_be.restmapper.PropertyMapper;
 import apap.ti._5.accommodation_2306211231_be.restmapper.RoomMapper;
@@ -718,6 +719,75 @@ public class PropertyRestService {
         // 4. Return (Pengecekan .contains() sebelumnya itu redundan/tidak perlu 
         // karena kita baru saja mengambil roomType dari list itu sendiri via stream)
         return RoomTypeMapper.toDetailDto(roomType);
+    }
+
+    /**
+     * Overload: when checkIn/checkOut provided, compute per-room availability similar
+     * to getPropertyDetailDto(propertyId, checkIn, checkOut) but only for the
+     * requested RoomType.
+     */
+    public RoomTypeDetailDto getRoomTypeById(String propertyId, String id, String checkIn, String checkOut) {
+        // Defensive decode of possible URL-encoded roomType id
+        // 1. Gunakan variabel sementara untuk logika decode
+        String tempId = id;
+        try {
+            tempId = URLDecoder.decode(id, StandardCharsets.UTF_8.name());
+        } catch (Exception ex) {
+            // silent fallback
+        }
+        
+        // 2. Assign ke variabel baru yang tidak akan diubah lagi (Effectively Final)
+        String finalId = tempId; 
+
+        Property property = propertyRepository.findByPropertyIdAndDeletedAtIsNull(propertyId)
+                .orElseThrow(() -> new IllegalArgumentException("Property not found: " + propertyId));
+
+        RoomType roomType = property.getListRoomType().stream()
+                // Sekarang 'finalId' aman digunakan di dalam lambda
+                .filter(rt -> rt.getRoomTypeId().equals(finalId)) 
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("RoomType not found: " + finalId));
+
+        // If no filters provided, return canonical detail
+        if (checkIn == null || checkIn.isBlank() || checkOut == null || checkOut.isBlank()) {
+            return RoomTypeMapper.toDetailDto(roomType);
+        }
+
+        LocalDateTime in = DateUtil.normalizeCheckIn(LocalDateTime.parse(checkIn + "T00:00:00"));
+        LocalDateTime out = DateUtil.normalizeCheckOut(LocalDateTime.parse(checkOut + "T00:00:00"));
+
+        RoomTypeDetailDto dto = RoomTypeMapper.toDetailDto(roomType);
+        if (dto == null) return null;
+
+        List<Room> evaluated = new ArrayList<>();
+        if (roomType.getListRoom() != null) {
+            for (Room r : roomType.getListRoom()) {
+                boolean available = true;
+                if (r.getActiveRoom() != null && r.getActiveRoom() == 0) available = false;
+                if (available && r.getMaintenanceStart() != null && r.getMaintenanceEnd() != null
+                        && DateUtil.isOverlapping(in, out, r.getMaintenanceStart(), r.getMaintenanceEnd())) {
+                    available = false;
+                }
+                if (available && r.getBookings() != null) {
+                    for (AccommodationBooking b : r.getBookings()) {
+                        Integer st = b.getStatus();
+                        if (st != null && st == 2) continue;
+                        if (b.getCheckInDate() != null && b.getCheckOutDate() != null
+                                && DateUtil.isOverlapping(in, out, b.getCheckInDate(), b.getCheckOutDate())) {
+                            available = false; break;
+                        }
+                    }
+                }
+                r.setAvailabilityStatus(available ? 1 : 0);
+                evaluated.add(r);
+            }
+        }
+
+        List<RoomDetailDto> roomDtos = evaluated.stream()
+                .map(RoomMapper::toDetailDto)
+                .collect(Collectors.toList());
+        dto.setRooms(roomDtos);
+        return dto;
     }
 
     public void softDeleteProperty(String propertyId) {
