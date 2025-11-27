@@ -61,6 +61,7 @@ public class WebSecurityConfig {
 
 						// Profile endpoints RBAC
 						.requestMatchers(HttpMethod.GET, "/profile/**").authenticated()
+						.requestMatchers(HttpMethod.PUT, "/profile/**").authenticated()
 
 						// Property endpoints RBAC: allow only SUPERADMIN, ACCOMMODATION_OWNER, CUSTOMER
 						// Check both plain and ROLE_ prefixed authorities to avoid mismatch depending
