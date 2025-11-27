@@ -368,6 +368,7 @@ public class AccommodationBookingRestService {
         LocalDateTime prevCheckOut = existing.getCheckOutDate();
         Boolean prevBreakfast = existing.getIsBreakfast();
         Integer previousTotal = existing.getTotalPrice() == null ? 0 : existing.getTotalPrice();
+        Integer previousExtra = existing.getExtraPay() == null ? 0 : existing.getExtraPay();
 
         // Apply core field updates from request
         AccommodationBookingMapper.updateEntity(existing, request);
@@ -494,6 +495,37 @@ public class AccommodationBookingRestService {
         // Persist
         existing = bookingRepository.save(existing);
 
+        // Handle side-effects when status changed from paid -> waiting (1 -> 0)
+        // Per spec: when reverting from paid to waiting, restore customer saldo
+        // only for the base (previousTotal - previousExtra) and decrement
+        // property.profit by that base. Do NOT refund extraPay.
+        if (prevStatus == 1 && existing.getStatus() != null && existing.getStatus() == 0) {
+            // previousTotal included the paid amounts; previousExtra holds the extra
+            int baseToRestore = Math.max(0, previousTotal - previousExtra);
+            // revert property's profit by baseToRestore
+            if (room.getRoomType() != null && room.getRoomType().getProperty() != null) {
+                Property prop = room.getRoomType().getProperty();
+                int profit = prop.getProfit() == null ? 0 : prop.getProfit();
+                prop.setProfit(Math.max(0, profit - baseToRestore));
+                propertyRepository.save(prop);
+            }
+            // restore customer's saldo by baseToRestore
+            if (baseToRestore > 0 && existing.getCustomerId() != null) {
+                try {
+                    var maybeCust = customerService.findById(existing.getCustomerId());
+                    if (maybeCust.isPresent()) {
+                        var cust = maybeCust.get();
+                        long currSaldo = cust.getSaldo() == null ? 0L : cust.getSaldo();
+                        cust.setSaldo(currSaldo + (long) baseToRestore);
+                        customerService.update(cust);
+                    }
+                } catch (Exception ex) {
+                    // swallow to avoid failing update flow; log if available
+                }
+            }
+            // Do NOT credit extraPay; extraPay will remain as amount to be paid (request more payment)
+        }
+
         // The existing booking in the Room repository should only change
         // the attribute inside of it, so the Room does not need to remove and re-add
         // the accommodation booking.
@@ -509,20 +541,23 @@ public class AccommodationBookingRestService {
         if (booking.getStatus() != null && booking.getStatus() != 0) {
             throw new IllegalStateException("Only bookings with status 0 (waiting for payment) can be paid");
         }
+        int prevStatus = booking.getStatus() == null ? 0 : booking.getStatus();
 
-        // Apply stored adjustments (extraPay/refund) at payment time to the original
-        // total
+        // Apply stored adjustments (extraPay/refund) at payment time to the original total.
+        // Per spec: when moving 0 -> 1, debit customer by base + extraPay and increase property.profit
+        // by the same. We will keep extraPay on the booking (do NOT clear it) so we can
+        // later distinguish base vs extra for revert logic.
         Room room = booking.getRoom();
         if (room == null || room.getRoomType() == null || room.getRoomType().getProperty() == null) {
             throw new IllegalStateException("Booking is not associated with a property");
         }
-        int oldTotal = booking.getTotalPrice() == null ? 0 : booking.getTotalPrice();
+        int basePrice = booking.getTotalPrice() == null ? 0 : booking.getTotalPrice();
         int extraPay = booking.getExtraPay() == null ? 0 : booking.getExtraPay();
         int refund = booking.getRefund() == null ? 0 : booking.getRefund();
         // At payment, refund reduces the amount to be paid
-        int payTotal = oldTotal + extraPay - refund;
-        if (payTotal < 0)
-            payTotal = 0;
+        int payTotal = basePrice + extraPay - refund;
+        if (payTotal < 0) payTotal = 0;
+        // Record the paid total
         booking.setTotalPrice(payTotal);
 
         // Add profit equal to the new total price
@@ -531,39 +566,45 @@ public class AccommodationBookingRestService {
         property.setProfit(profit + payTotal);
         propertyRepository.save(property);
 
-        // Debit customer saldo when payment is applied (if linked to real Customer)
+        // Debit customer saldo when payment is applied (if linked to real Customer).
+        // Debit the payTotal (includes extraPay, if present).
         if (booking.getCustomerId() != null) {
             try {
                 var maybeCust = customerService.findById(booking.getCustomerId());
                 if (maybeCust.isPresent()) {
                     var cust = maybeCust.get();
                     long currSaldo = cust.getSaldo() == null ? 0L : cust.getSaldo();
-                    // Prevent negative saldo: require sufficient saldo to cover payment
                     if (currSaldo < (long) payTotal) {
-                        throw new ResponseStatusException(
-                                HttpStatus.PAYMENT_REQUIRED,
+                        throw new ResponseStatusException(HttpStatus.PAYMENT_REQUIRED,
                                 "Insufficient customer saldo to complete payment");
                     }
                     long newSaldo = currSaldo - (long) payTotal;
-                    // Clamp to zero as a safety (shouldn't be negative due to check)
-                    if (newSaldo < 0)
-                        newSaldo = 0L;
+                    if (newSaldo < 0) newSaldo = 0L;
                     cust.setSaldo(newSaldo);
                     customerService.update(cust);
                 }
             } catch (ResponseStatusException rse) {
-                // propagate balance-related response status up
                 throw rse;
             } catch (Exception ex) {
-                // Do not fail the payment if customer update (non-balance error) fails; log if
-                // logging available
+                // swallow non-critical errors
             }
         }
 
-        // Reset adjustments after applying
-        booking.setExtraPay(0);
-        booking.setRefund(0);
-        booking.setStatus(1); // payment confirmed
+        // After applying payment, adjust booking fields per recent rule updates:
+        // - If transition was 0 -> 1 and extraPay was present, clear extraPay (becomes 0)
+        // - If transition was 3 -> 1 and refund was present, clear refund (becomes 0)
+        booking.setStatus(1);
+        if (prevStatus == 0) {
+            // clear extraPay after charging customer
+            if (booking.getExtraPay() != null && booking.getExtraPay() > 0) {
+                booking.setExtraPay(0);
+            }
+        }
+        if (prevStatus == 3) {
+            if (booking.getRefund() != null && booking.getRefund() > 0) {
+                booking.setRefund(0);
+            }
+        }
         booking = bookingRepository.save(booking);
         return AccommodationBookingMapper.toDto(booking);
     }
@@ -587,25 +628,34 @@ public class AccommodationBookingRestService {
         int profit = property.getProfit() != null ? property.getProfit() : 0;
         int totalPrice = booking.getTotalPrice() != null ? booking.getTotalPrice() : 0;
 
+        // Implement cancel behavior per spec:
+        // - 0 -> 2: no side-effects (no payment yet)
+        // - 1 -> 2: revert property's profit to before payment by removing only the base
+        //   (do NOT refund extraPay). Clear extraPay.
+        // - 3 -> 2: restore the whole payment (but do not grant refund amount separately)
         int refundToCustomer = 0;
         if (status == 0) {
-            // No income recognized yet; just cancel
+            // No payment was applied: simply mark canceled. Do not modify saldo/profit.
         } else if (status == 1) {
-            // Paid -> remove recognized income and refund full paid amount to customer
-            profit = profit - totalPrice;
-            refundToCustomer = totalPrice;
+            // Paid -> revert base portion only and clear extraPay
+            int extra = booking.getExtraPay() == null ? 0 : booking.getExtraPay();
+            int paidTotal = booking.getTotalPrice() == null ? 0 : booking.getTotalPrice();
+            int refundBase = Math.max(0, paidTotal - extra);
+            profit = Math.max(0, profit - refundBase);
+            refundToCustomer = refundBase;
+            booking.setExtraPay(0);
+            booking.setRefund(0);
         } else if (status == 3) {
-            // Refund-requested: remove recognized income and refund either refund amount
-            // (if set) or full total
-            profit = profit - totalPrice;
-            refundToCustomer = booking.getRefund() != null && booking.getRefund() > 0 ? booking.getRefund()
-                    : totalPrice;
+            // Refund requested: restore the whole payment (but not the refund)
+            int paidTotal = booking.getTotalPrice() == null ? 0 : booking.getTotalPrice();
+            profit = Math.max(0, profit - paidTotal);
+            refundToCustomer = paidTotal;
+            booking.setExtraPay(0);
+            booking.setRefund(0);
         }
 
         property.setProfit(Math.max(0, profit));
         booking.setStatus(2); // canceled
-        booking.setExtraPay(0);
-        booking.setRefund(0);
 
         propertyRepository.save(property);
 
@@ -625,10 +675,7 @@ public class AccommodationBookingRestService {
         }
 
         booking = bookingRepository.save(booking);
-        // Do NOT remove canceled bookings from the Room collection here.
-        // Removing a booking from the Room.bookings list with
-        // `orphanRemoval = true` causes JPA to delete the booking entity.
-        // Keep canceled bookings in the DB (status=2) so records/audit remain.
+        // Keep canceled bookings in DB (do not remove from Room.bookings here)
         return AccommodationBookingMapper.toDto(booking);
     }
 

@@ -84,4 +84,34 @@ public class EndUserRestController {
             return ResponseUtil.error("Failed to update user", HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
+
+    // @GetMapping("/saldo/{identifier}")
+    // public ResponseEntity<BaseResponseDto<Integer>> getCustomerSaldo(@PathVariable String identifier) {
+    //     try {
+    //         Integer saldo = endUserRestService.getCustomerSaldoByIdentifier(identifier);
+    //         return ResponseUtil.success(saldo, "OK", HttpStatus.OK).toBuilder().build();
+    //     } catch (AccessDeniedException ex) {
+    //         return ResponseUtil.error("You are not authorized to access this resource.", HttpStatus.FORBIDDEN);
+    //     } catch (IllegalArgumentException ex) {
+    //         return ResponseUtil.error(ex.getMessage(), HttpStatus.BAD_REQUEST);
+    //     } catch (Exception ex) {
+    //         return ResponseUtil.error("Failed to fetch customer saldo", HttpStatus.INTERNAL_SERVER_ERROR);
+    //     }
+    // }
+
+    // @PutMapping("/saldo/{identifier}")
+    // public ResponseEntity<BaseResponseDto<Integer>> updateCustomerSaldo(
+    //         @PathVariable String identifier,
+    //         @RequestParam Integer amount) {
+    //     try {
+    //         Integer updatedSaldo = endUserRestService.updateCustomerSaldoByIdentifier(identifier, amount);
+    //         return ResponseUtil.success(updatedSaldo, "Updated", HttpStatus.OK).toBuilder().build();
+    //     } catch (AccessDeniedException ex) {
+    //         return ResponseUtil.error("You are not authorized to update this resource.", HttpStatus.FORBIDDEN);
+    //     } catch (IllegalArgumentException ex) {
+    //         return ResponseUtil.error(ex.getMessage(), HttpStatus.BAD_REQUEST);
+    //     } catch (Exception ex) {
+    //         return ResponseUtil.error("Failed to update customer saldo", HttpStatus.INTERNAL_SERVER_ERROR);
+    //     }
+    // }
 }
