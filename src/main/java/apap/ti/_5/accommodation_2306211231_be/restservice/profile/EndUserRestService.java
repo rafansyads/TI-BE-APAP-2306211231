@@ -28,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class EndUserRestService {
 
 	private final SuperadminRepository superadminRepository;
+	private final AccommodationOwnerRepository accommodationOwnerRepository;
 	private final RentalVendorRepository rentalVendorRepository;
 	private final FlightAirlineRepository flightAirlineRepository;
 	private final InsuranceProviderRepository insuranceProviderRepository;
@@ -51,6 +52,7 @@ public class EndUserRestService {
 		if (roleFilter == null || roleFilter.isBlank()) {
 			// return all users across all role tables
 			result.addAll(superadminRepository.findAll());
+			result.addAll(accommodationOwnerRepository.findAll());
 			result.addAll(rentalVendorRepository.findAll());
 			result.addAll(flightAirlineRepository.findAll());
 			result.addAll(insuranceProviderRepository.findAll());
@@ -61,6 +63,9 @@ public class EndUserRestService {
 			switch (role) {
 				case "SUPERADMIN":
 					result.addAll(superadminRepository.findAll());
+					break;
+				case "ACCOMMODATION_OWNER":
+					result.addAll(accommodationOwnerRepository.findAll());
 					break;
 				case "RENTAL_VENDOR":
 					result.addAll(rentalVendorRepository.findAll());
@@ -145,6 +150,8 @@ public class EndUserRestService {
 			Optional<? extends EndUser> res;
 			res = superadminRepository.findById(id);
 			if (res.isPresent()) return res.get();
+			res = accommodationOwnerRepository.findById(id);
+			if (res.isPresent()) return res.get();
 			res = rentalVendorRepository.findById(id);
 			if (res.isPresent()) return res.get();
 			res = flightAirlineRepository.findById(id);
@@ -165,6 +172,8 @@ public class EndUserRestService {
 		Optional<? extends EndUser> resOpt;
 		resOpt = superadminRepository.findByUsername(maybeUsername);
 		if (resOpt.isPresent()) return resOpt.get();
+		resOpt = accommodationOwnerRepository.findByUsername(maybeUsername);
+		if (resOpt.isPresent()) return resOpt.get();
 		resOpt = rentalVendorRepository.findByUsername(maybeUsername);
 		if (resOpt.isPresent()) return resOpt.get();
 		resOpt = flightAirlineRepository.findByUsername(maybeUsername);
@@ -180,6 +189,8 @@ public class EndUserRestService {
 		String maybeEmail = identifier.trim();
 		Optional<? extends EndUser> byEmail;
 		byEmail = superadminRepository.findByEmailIgnoreCase(maybeEmail);
+		if (byEmail.isPresent()) return byEmail.get();
+		byEmail = accommodationOwnerRepository.findByEmailIgnoreCase(maybeEmail);
 		if (byEmail.isPresent()) return byEmail.get();
 		byEmail = rentalVendorRepository.findByEmailIgnoreCase(maybeEmail);
 		if (byEmail.isPresent()) return byEmail.get();
@@ -245,6 +256,8 @@ public class EndUserRestService {
 		// persist to correct repository based on runtime type
 		if (target instanceof Superadmin) {
 			superadminRepository.save((Superadmin) target);
+		} else if (target instanceof AccommodationOwner) {
+				accommodationOwnerRepository.save((AccommodationOwner) target);
 		} else if (target instanceof RentalVendor) {
 			rentalVendorRepository.save((RentalVendor) target);
 		} else if (target instanceof FlightAirline) {

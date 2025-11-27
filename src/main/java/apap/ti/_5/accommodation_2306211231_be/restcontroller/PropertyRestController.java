@@ -12,6 +12,7 @@ import apap.ti._5.accommodation_2306211231_be.restdto.response.property.Property
 import apap.ti._5.accommodation_2306211231_be.restdto.response.property.PropertySummaryDto;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.property.OwnerSummaryDto;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.room.RoomDetailDto;
+import apap.ti._5.accommodation_2306211231_be.restdto.response.room.roomtype.RoomTypeDetailDto;
 import apap.ti._5.accommodation_2306211231_be.util.ResponseUtil;
 import apap.ti._5.accommodation_2306211231_be.util.IdUtil;
 import apap.ti._5.accommodation_2306211231_be.restservice.AccommodationReviewRestService;
@@ -200,7 +201,9 @@ public class PropertyRestController {
                 var user = authRestService.findAggregateByUsername(auth.getName());
                 if (user == null)
                     return ResponseUtil.error("Owner not found", HttpStatus.NOT_FOUND);
-                if (dto == null || dto.getOwnerId() == null || !dto.getOwnerId().equals(user.getId())) {
+                // dto.getOwnerId() is String (UUID as string), user.getId() is UUID -> compare string forms
+                String callerId = (user.getId() == null) ? null : user.getId().toString();
+                if (dto == null || dto.getOwnerId() == null || !dto.getOwnerId().equals(callerId)) {
                     return ResponseUtil.error("Forbidden", HttpStatus.FORBIDDEN);
                 }
             }
@@ -208,6 +211,21 @@ public class PropertyRestController {
                     dto,
                     "[GET] The property details retrieved successfully"
                             + (checkIn != null && checkOut != null ? " with availability filter" : ""),
+                    HttpStatus.OK).toBuilder().build();
+        } catch (IllegalArgumentException ex) {
+            return ResponseUtil.error(ex.getMessage(), HttpStatus.NOT_FOUND);
+        }
+    }
+
+    @GetMapping("/{propertyId}/roomtype/{id}")
+    public ResponseEntity<BaseResponseDto<RoomTypeDetailDto>> getRoomTypeById(
+            @PathVariable("propertyId") String propertyId,
+            @PathVariable("id") String id) {
+        try {
+            RoomTypeDetailDto dto = propertyService.getRoomTypeById(propertyId, id);
+            return ResponseUtil.success(
+                    dto,
+                    "[GET] The room types for the property retrieved successfully",
                     HttpStatus.OK).toBuilder().build();
         } catch (IllegalArgumentException ex) {
             return ResponseUtil.error(ex.getMessage(), HttpStatus.NOT_FOUND);

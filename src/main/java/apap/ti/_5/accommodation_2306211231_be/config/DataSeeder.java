@@ -26,8 +26,8 @@ public class DataSeeder implements CommandLineRunner {
     private final FlightAirlineRepository flightAirlineRepository;
     private final InsuranceProviderRepository insuranceProviderRepository;
     private final TourPackageVendorRepository tourPackageVendorRepository;
-    private final BCryptPasswordEncoder passwordEncoder;
     private final AccommodationOwnerRepository accommodationOwnerRepository;
+    private final BCryptPasswordEncoder passwordEncoder;
 
     private static final String[] HOTEL_TYPES = {"Single Room","Double Room","Deluxe Room","Superior Room","Suite","Family Room"};
     private static final String[] VILLA_TYPES = {"Luxury","Beachfront","Mountside","Eco-friendly","Romantic"};
@@ -187,7 +187,16 @@ public class DataSeeder implements CommandLineRunner {
                 // Absolute fallback: Jakarta
                 province = 31;
             }
-            UUID owner = UUID.randomUUID();
+            // Prefer using an existing seeded AccommodationOwner (round-robin)
+            List<AccommodationOwner> seededOwners = accommodationOwnerRepository.findAll();
+            UUID owner;
+            if (!seededOwners.isEmpty()) {
+                // pick owner in round-robin so properties are distributed among seeded owners
+                int ownerIndex = (propIndex) % seededOwners.size();
+                owner = seededOwners.get(ownerIndex).getId();
+            } else {
+                owner = UUID.randomUUID();
+            }
             String propId = IdUtil.generatePropertyId(t, owner, globalSeq);
 
             Property p = Property.builder()
@@ -200,7 +209,9 @@ public class DataSeeder implements CommandLineRunner {
                     .totalRoom(0) // set later
             .profit(0)
                     .activeStatus(1)
-                    .ownerName("Owner " + (propIndex+1))
+                    .ownerName(accommodationOwnerRepository.findById(owner)
+                            .map(AccommodationOwner::getName)
+                            .orElse("Accommodation Owner " + (propIndex+1)))
                     .ownerId(owner)
                     .build();
 

@@ -405,7 +405,27 @@ public class AccommodationBookingRestController {
             @RequestParam(value = "month", required = true) Integer month,
             @RequestParam(value = "year", required = true) Integer year) {
         try {
-            Map<String, Object> chartData = bookingService.getBookingChart(month, year);
+            var auth = SecurityContextHolder.getContext().getAuthentication();
+            boolean isOwner = auth != null && auth.getAuthorities().stream()
+                    .anyMatch(a -> a.getAuthority().equals("ACCOMMODATION_OWNER") || a.getAuthority().equals("ROLE_ACCOMMODATION_OWNER"));
+            boolean isSuper = auth != null && auth.getAuthorities().stream()
+                    .anyMatch(a -> a.getAuthority().equals("SUPERADMIN") || a.getAuthority().equals("ROLE_SUPERADMIN"));
+
+            UUID ownerUuid = null;
+            if (isOwner && !isSuper) {
+                String caller = auth != null ? auth.getName() : null;
+                if (caller == null) return ResponseUtil.error("Unauthorized", org.springframework.http.HttpStatus.UNAUTHORIZED);
+                var userAgg = authRestService.findAggregateByUsername(caller);
+                if (userAgg == null || userAgg.getId() == null) return ResponseUtil.error("Owner not found", org.springframework.http.HttpStatus.NOT_FOUND);
+                try {
+                    ownerUuid = userAgg.getId();
+                } catch (Exception e) {
+                    // if id is not a UUID, leave ownerUuid null which will return empty results
+                    ownerUuid = null;
+                }
+            }
+
+            Map<String, Object> chartData = bookingService.getBookingChart(month, year, ownerUuid);
             return ResponseUtil.success(
                     chartData,
                     "[GET] Booking chart data retrieved successfully for " + month + "/" + year,
@@ -417,6 +437,10 @@ public class AccommodationBookingRestController {
         }
     }
 
+    /**
+     * Legacy system,
+     * Frontend won't call this again
+     */
     @GetMapping("/customers")
     public ResponseEntity<BaseResponseDto<List<CustomerSummaryResponseDTO>>> listCustomers() {
         try {

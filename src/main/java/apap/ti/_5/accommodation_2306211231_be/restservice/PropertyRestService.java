@@ -13,6 +13,8 @@ import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,10 +23,12 @@ import apap.ti._5.accommodation_2306211231_be.models.AccommodationBooking;
 import apap.ti._5.accommodation_2306211231_be.models.Property;
 import apap.ti._5.accommodation_2306211231_be.models.Room;
 import apap.ti._5.accommodation_2306211231_be.models.RoomType;
+import apap.ti._5.accommodation_2306211231_be.models.profile.AccommodationOwner;
 import apap.ti._5.accommodation_2306211231_be.repository.AccommodationBookingRepository;
 import apap.ti._5.accommodation_2306211231_be.repository.PropertyRepository;
 import apap.ti._5.accommodation_2306211231_be.repository.RoomRepository;
 import apap.ti._5.accommodation_2306211231_be.repository.RoomTypeRepository;
+import apap.ti._5.accommodation_2306211231_be.repository.profile.AccommodationOwnerRepository;
 import apap.ti._5.accommodation_2306211231_be.restdto.request.property.PropertyCreateRequest;
 import apap.ti._5.accommodation_2306211231_be.restdto.request.property.PropertyUpdateRequest;
 import apap.ti._5.accommodation_2306211231_be.restdto.request.room.RoomCreateRequest;
@@ -34,8 +38,10 @@ import apap.ti._5.accommodation_2306211231_be.restdto.response.property.OwnerSum
 import apap.ti._5.accommodation_2306211231_be.restdto.response.property.PropertyDetailDto;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.property.PropertySummaryDto;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.room.RoomDetailDto;
+import apap.ti._5.accommodation_2306211231_be.restdto.response.room.roomtype.RoomTypeDetailDto;
 import apap.ti._5.accommodation_2306211231_be.restmapper.PropertyMapper;
 import apap.ti._5.accommodation_2306211231_be.restmapper.RoomMapper;
+import apap.ti._5.accommodation_2306211231_be.restmapper.RoomTypeMapper;
 import apap.ti._5.accommodation_2306211231_be.util.DateUtil;
 import apap.ti._5.accommodation_2306211231_be.util.IdUtil;
 import apap.ti._5.accommodation_2306211231_be.util.ProvinceUtil;
@@ -49,6 +55,7 @@ public class PropertyRestService {
     private final RoomRepository roomRepository;
     private final RoomTypeRepository roomTypeRepository;
     private final AccommodationBookingRepository bookingRepository;
+    private final AccommodationOwnerRepository accommodationOwnerRepository;
 
     public long count() {
         return propertyRepository.countByDeletedAtIsNull();
@@ -198,14 +205,18 @@ public class PropertyRestService {
         if (!ProvinceUtil.isValidCode(request.getProvince())) {
             throw new IllegalArgumentException("Invalid province code: " + request.getProvince());
         }
-        // Validate owner UUID ↔ name consistency
+        // Validate owner UUID ↔ name consistency: owner must exist and name should match
         UUID ownerUuid = UUID.fromString(request.getOwnerId());
-        propertyRepository.findFirstByOwnerId(ownerUuid).ifPresent(existing -> {
-            if (existing.getOwnerName() != null && request.getOwnerName() != null
-                    && !existing.getOwnerName().equals(request.getOwnerName())) {
+        Optional<AccommodationOwner> ownerOpt = accommodationOwnerRepository.findById(ownerUuid);
+        if (ownerOpt.isEmpty()) {
+            throw new IllegalArgumentException("Owner not found: " + ownerUuid);
+        } else {
+            AccommodationOwner owner = ownerOpt.get();
+            if (owner.getName() != null && request.getOwnerName() != null
+                    && !owner.getName().equals(request.getOwnerName())) {
                 throw new IllegalArgumentException("Owner UUID/name mismatch for UUID: " + ownerUuid);
             }
-        });
+        }
         // Validate presence of at least one room type
         List<RoomTypeCreateRequest> rtReqs = request.getRoomTypes();
         if (rtReqs == null || rtReqs.isEmpty()) {
@@ -377,12 +388,20 @@ public class PropertyRestService {
         // owner fields)
         if (request.getOwnerId() != null) {
             UUID ownerUuid = UUID.fromString(request.getOwnerId());
-            propertyRepository.findFirstByOwnerId(ownerUuid).ifPresent(other -> {
-                if (other.getOwnerName() != null && request.getOwnerName() != null
-                        && !other.getOwnerName().equals(request.getOwnerName())) {
+            Optional<AccommodationOwner> ownerOpt = accommodationOwnerRepository.findById(ownerUuid);
+            if (ownerOpt.isEmpty()) {
+                throw new IllegalArgumentException("Owner not found: " + ownerUuid);
+            } else {
+                AccommodationOwner owner = ownerOpt.get();
+                if (owner.getName() != null && request.getOwnerName() != null
+                        && !owner.getName().equals(request.getOwnerName())) {
                     throw new IllegalArgumentException("Owner UUID/name mismatch for UUID: " + ownerUuid);
                 }
-            });
+                // We do not want to change the owner of an existing property
+                if (!existing.getOwnerId().equals(ownerUuid)) {
+                    throw new IllegalArgumentException("Cannot change property owner");
+                }
+            }
         }
 
         // Update allowed Property fields only
@@ -670,6 +689,35 @@ public class PropertyRestService {
         Room savedRoom = roomRepository.save(room);
 
         return RoomMapper.toDetailDto(savedRoom);
+    }
+
+    public RoomTypeDetailDto getRoomTypeById(String propertyId, String id) {
+        // 1. Handle decoding ID terlebih dahulu
+        String finalId = id; // Default gunakan nilai asli
+        try {
+            // Coba decode. Jika berhasil, finalId akan terupdate.
+            finalId = URLDecoder.decode(id, StandardCharsets.UTF_8.name());
+        } catch (Exception ex) {
+            // Jika gagal decode, biarkan finalId tetap menggunakan nilai 'id' asli (silent fail)
+        }
+
+        // 2. Cari Property
+        Property property = propertyRepository.findByPropertyIdAndDeletedAtIsNull(propertyId)
+                .orElseThrow(() -> new IllegalArgumentException("Property not found: " + propertyId));
+
+        // 3. Cari RoomType dari list yang ada di dalam Property tersebut
+        // Kita perlu variable effective final untuk lambda, jadi gunakan variable baru jika perlu, 
+        // tapi 'finalId' di sini sudah cukup aman.
+        String targetId = finalId; 
+        
+        RoomType roomType = property.getListRoomType().stream()
+                .filter(rt -> rt.getRoomTypeId().equals(targetId))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("RoomType not found: " + targetId));
+
+        // 4. Return (Pengecekan .contains() sebelumnya itu redundan/tidak perlu 
+        // karena kita baru saja mengambil roomType dari list itu sendiri via stream)
+        return RoomTypeMapper.toDetailDto(roomType);
     }
 
     public void softDeleteProperty(String propertyId) {

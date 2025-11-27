@@ -3,20 +3,20 @@ package apap.ti._5.accommodation_2306211231_be.restservice;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
-import java.util.Optional;
-import java.util.LinkedHashMap;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.UUID;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.UUID;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
-import org.springframework.http.HttpStatus;
 
 import apap.ti._5.accommodation_2306211231_be.models.AccommodationBooking;
 import apap.ti._5.accommodation_2306211231_be.models.Property;
@@ -29,7 +29,6 @@ import apap.ti._5.accommodation_2306211231_be.restdto.request.accommodationbooki
 import apap.ti._5.accommodation_2306211231_be.restdto.response.accommodationbooking.AccommodationBookingDto;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.profile.CustomerSummaryResponseDTO;
 import apap.ti._5.accommodation_2306211231_be.restmapper.AccommodationBookingMapper;
-import apap.ti._5.accommodation_2306211231_be.restservice.CustomerRestService;
 import apap.ti._5.accommodation_2306211231_be.util.DateUtil;
 import apap.ti._5.accommodation_2306211231_be.util.IdUtil;
 import lombok.RequiredArgsConstructor;
@@ -93,6 +92,11 @@ public class AccommodationBookingRestService {
         if (request == null) {
             throw new IllegalArgumentException("Request cannot be null");
         }
+
+        // Find customer, if not found then do not proceed
+        UUID custID = customerService.findById(UUID.fromString(request.getCustomerId().trim()))
+                .orElseThrow(() -> new IllegalArgumentException("Customer not found with ID: " + request.getCustomerId()))
+                .getId();
 
         // Create aggregate from request
         AccommodationBooking booking = AccommodationBookingMapper.fromCreateRequest(request);
@@ -203,6 +207,11 @@ public class AccommodationBookingRestService {
         if (request == null) {
             throw new IllegalArgumentException("Request cannot be null");
         }
+
+        // Find customer, if not found then do not proceed
+        UUID custID = customerService.findById(UUID.fromString(request.getCustomerId().trim()))
+                .orElseThrow(() -> new IllegalArgumentException("Customer not found with ID: " + request.getCustomerId()))
+                .getId();
 
         // Firstly, check the idRoom exists & same with in request
         if (!idRoom.equals(request.getRoomId())) {
@@ -663,7 +672,7 @@ public class AccommodationBookingRestService {
         return AccommodationBookingMapper.toDto(booking);
     }
 
-    public Map<String, Object> getBookingChart(Integer month, Integer year) {
+    public Map<String, Object> getBookingChart(Integer month, Integer year, UUID ownerId) {
         if (month == null || year == null) {
             throw new IllegalArgumentException("month and year are required");
         }
@@ -671,6 +680,16 @@ public class AccommodationBookingRestService {
         // Build per-property monthly income from bookings where check-in month/year
         // match
         var properties = propertyRepository.findByDeletedAtIsNull();
+        // If ownerId present, restrict to properties owned by that owner
+        if (ownerId != null) {
+            var filtered = new ArrayList<Property>();
+            for (var p : properties) {
+                if (p.getOwnerId() != null && p.getOwnerId().equals(ownerId)) {
+                    filtered.add(p);
+                }
+            }
+            properties = filtered;
+        }
         Map<String, Integer> incomeByProperty = new LinkedHashMap<>();
         Map<String, Property> propById = new LinkedHashMap<>();
         for (var p : properties) {
@@ -684,6 +703,10 @@ public class AccommodationBookingRestService {
                     || b.getRoom().getRoomType().getProperty() == null)
                 continue;
             var prop = b.getRoom().getRoomType().getProperty();
+            // If ownerId filter is present, skip bookings not belonging to the owner's properties
+            if (ownerId != null) {
+                if (prop.getOwnerId() == null || !prop.getOwnerId().equals(ownerId)) continue;
+            }
             var checkIn = b.getCheckInDate();
             if (checkIn == null)
                 continue;
@@ -787,6 +810,11 @@ public class AccommodationBookingRestService {
         return changed;
     }
 
+    /**
+     * Legacy System, 
+     * get unique customers from bookings
+     * We do not use this again, but we will not remove it yet
+     */
     public List<CustomerSummaryResponseDTO> getCustomers() {
         var bookings = bookingRepository.findAll();
         Map<String, CustomerSummaryResponseDTO> map = new LinkedHashMap<>();
