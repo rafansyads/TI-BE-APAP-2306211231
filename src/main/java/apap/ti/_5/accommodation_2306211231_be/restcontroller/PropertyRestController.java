@@ -1,5 +1,6 @@
 package apap.ti._5.accommodation_2306211231_be.restcontroller;
 
+import apap.ti._5.accommodation_2306211231_be.models.profile.EndUser;
 import apap.ti._5.accommodation_2306211231_be.restservice.PropertyRestService;
 import apap.ti._5.accommodation_2306211231_be.restservice.AuthRestService;
 import apap.ti._5.accommodation_2306211231_be.restdto.BaseRequestDto;
@@ -28,6 +29,11 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.util.*;
+import java.time.LocalDateTime;
+import apap.ti._5.accommodation_2306211231_be.models.Property;
+import apap.ti._5.accommodation_2306211231_be.models.RoomType;
+import apap.ti._5.accommodation_2306211231_be.models.Room;
+import apap.ti._5.accommodation_2306211231_be.models.AccommodationBooking;
 
 @RestController
 @RequestMapping("/property")
@@ -60,13 +66,34 @@ public class PropertyRestController {
             List<PropertySummaryDto> list;
             if (isOwner && caller != null) {
                 // owner: only show properties owned by this user
-                var user = authRestService.findAggregateByUsername(caller);
+                EndUser user = authRestService.findAggregateByUsername(caller);
                 if (user == null)
                     return ResponseUtil.error("Owner not found", HttpStatus.NOT_FOUND);
                 var props = propertyService.getAllProperties();
                 List<PropertySummaryDto> filtered = new ArrayList<>();
-                for (var p : props) {
+                var now = LocalDateTime.now();
+                for (Property p : props) {
                     if (p.getOwnerId() != null && p.getOwnerId().equals(user.getId())) {
+                        // transiently mark rooms unavailable if there is an ongoing booking now
+                        if (p.getListRoomType() != null) {
+                            for (RoomType rt : p.getListRoomType()) {
+                                if (rt.getListRoom() == null) continue;
+                                for (Room r : rt.getListRoom()) {
+                                    if (r.getBookings() == null) continue;
+                                    for (AccommodationBooking b : r.getBookings()) {
+                                        Integer st = b.getStatus();
+                                        if (st == null) continue;
+                                        if (st == 2) continue; // canceled ignored
+                                        if (b.getCheckInDate() == null || b.getCheckOutDate() == null) continue;
+                                        boolean ongoing = (now.isEqual(b.getCheckInDate()) || now.isAfter(b.getCheckInDate())) && now.isBefore(b.getCheckOutDate());
+                                        if (ongoing) {
+                                            r.setAvailabilityStatus(0);
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         filtered.add(PropertyMapper.toSummaryDto(p));
                     }
                 }
@@ -199,7 +226,7 @@ public class PropertyRestController {
                     .anyMatch(a -> a.getAuthority().equals("ACCOMMODATION_OWNER")
                             || a.getAuthority().equals("ROLE_ACCOMMODATION_OWNER"));
             if (isOwner && auth != null) {
-                var user = authRestService.findAggregateByUsername(auth.getName());
+                EndUser user = authRestService.findAggregateByUsername(auth.getName());
                 if (user == null)
                     return ResponseUtil.error("Owner not found", HttpStatus.NOT_FOUND);
                 // dto.getOwnerId() is String (UUID as string), user.getId() is UUID -> compare string forms
@@ -240,10 +267,12 @@ public class PropertyRestController {
 
             if (isOwner && caller != null && !isSuper) {
                 // Ensure the owner only accesses their own property's room types
-                PropertyDetailDto pdto = propertyService.getPropertyDetailDto(propertyId);
-                if (pdto == null
-                        || (pdto.getOwnerName() != null && !pdto.getOwnerName().equals(caller)
-                            && (pdto.getOwnerId() == null || !pdto.getOwnerId().toString().equals(caller)))) {
+                EndUser user = authRestService.findAggregateByUsername(caller);
+                if (user == null)
+                    return ResponseUtil.error("Owner not found", HttpStatus.NOT_FOUND);
+                PropertyDetailDto propertyDto = propertyService.getPropertyDetailDto(propertyId);
+                String ownerId = propertyDto.getOwnerId();
+                if (ownerId == null || !ownerId.equals(user.getId().toString())) {
                     return ResponseUtil.error("Forbidden: owner cannot access this property", HttpStatus.FORBIDDEN);
                 }
             }
@@ -278,7 +307,7 @@ public class PropertyRestController {
 
             // If accommodation owner: set ownerId to caller (cannot assign different owner)
             if (isOwner) {
-                var user = authRestService.findAggregateByUsername(caller);
+                EndUser user = authRestService.findAggregateByUsername(caller);
                 if (user == null)
                     return ResponseUtil.error("Owner not found", HttpStatus.NOT_FOUND);
                 request.getData().setOwnerId(user.getId().toString());
@@ -306,7 +335,7 @@ public class PropertyRestController {
                     .anyMatch(a -> a.getAuthority().equals("ACCOMMODATION_OWNER")
                             || a.getAuthority().equals("ROLE_ACCOMMODATION_OWNER"));
             if (isOwner && auth != null) {
-                var user = authRestService.findAggregateByUsername(auth.getName());
+                EndUser user = authRestService.findAggregateByUsername(auth.getName());
                 if (user == null)
                     return ResponseUtil.error("Owner not found", HttpStatus.NOT_FOUND);
                 var existing = propertyService.getPropertyById(propertyId)
@@ -340,7 +369,7 @@ public class PropertyRestController {
                     .anyMatch(a -> a.getAuthority().equals("ACCOMMODATION_OWNER")
                             || a.getAuthority().equals("ROLE_ACCOMMODATION_OWNER"));
             if (isOwner && auth != null) {
-                var user = authRestService.findAggregateByUsername(auth.getName());
+                EndUser user = authRestService.findAggregateByUsername(auth.getName());
                 if (user == null)
                     return ResponseUtil.error("Owner not found", HttpStatus.NOT_FOUND);
                 var existing = propertyService.getPropertyById(propertyId)
@@ -374,7 +403,7 @@ public class PropertyRestController {
                     .anyMatch(a -> a.getAuthority().equals("ACCOMMODATION_OWNER")
                             || a.getAuthority().equals("ROLE_ACCOMMODATION_OWNER"));
             if (isOwner && auth != null) {
-                var user = authRestService.findAggregateByUsername(auth.getName());
+                EndUser user = authRestService.findAggregateByUsername(auth.getName());
                 if (user == null)
                     return ResponseUtil.error("Owner not found", HttpStatus.NOT_FOUND);
                 var existing = propertyService.getPropertyById(propertyId)
@@ -411,7 +440,7 @@ public class PropertyRestController {
             boolean isSuper = auth != null && auth.getAuthorities().stream()
                     .anyMatch(a -> a.getAuthority().equals("SUPERADMIN") || a.getAuthority().equals("ROLE_SUPERADMIN"));
             if (isOwner && auth != null && !isSuper) {
-                var user = authRestService.findAggregateByUsername(auth.getName());
+                EndUser user = authRestService.findAggregateByUsername(auth.getName());
                 if (user == null)
                     return ResponseUtil.error("Owner not found", HttpStatus.NOT_FOUND);
                 var existing = propertyService.getPropertyById(id)
@@ -452,7 +481,7 @@ public class PropertyRestController {
                     .anyMatch(a -> a.getAuthority().equals("ACCOMMODATION_OWNER")
                             || a.getAuthority().equals("ROLE_ACCOMMODATION_OWNER"));
             if (isOwner && auth != null) {
-                var user = authRestService.findAggregateByUsername(auth.getName());
+                EndUser user = authRestService.findAggregateByUsername(auth.getName());
                 if (user == null)
                     return ResponseUtil.error("Owner not found", HttpStatus.NOT_FOUND);
                 var existing = propertyService.getPropertyById(id)

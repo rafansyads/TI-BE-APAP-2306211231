@@ -1,6 +1,7 @@
 package apap.ti._5.accommodation_2306211231_be.restmapper;
 
 import java.time.LocalDateTime;
+import apap.ti._5.accommodation_2306211231_be.models.AccommodationBooking;
 
 import apap.ti._5.accommodation_2306211231_be.models.Room;
 import apap.ti._5.accommodation_2306211231_be.restdto.request.room.RoomCreateRequest;
@@ -44,6 +45,24 @@ public final class RoomMapper {
                 }
             }
         }
+        // booking-based override: if there is an ongoing booking (now between
+        // checkInDate (inclusive) and checkOutDate (exclusive)) with status in
+        // {0,1,3,4} then force unavailable in the response (transient only)
+        if (computedAvailability != null && computedAvailability == 1 && r.getBookings() != null) {
+            var now = LocalDateTime.now();
+            for (AccommodationBooking b : r.getBookings()) {
+                Integer st = b.getStatus();
+                if (st == null) continue;
+                if (st == 2) continue; // canceled ignored
+                if (b.getCheckInDate() == null || b.getCheckOutDate() == null) continue;
+                boolean ongoing = (now.isEqual(b.getCheckInDate()) || now.isAfter(b.getCheckInDate())) && now.isBefore(b.getCheckOutDate());
+                if (ongoing) {
+                    computedAvailability = 0;
+                    break;
+                }
+            }
+        }
+
         dto.setAvailabilityStatus(computedAvailability);
         dto.setActiveRoom(r.getActiveRoom());
         dto.setMaintenanceStart(r.getMaintenanceStart() != null ? r.getMaintenanceStart().toString() : null);

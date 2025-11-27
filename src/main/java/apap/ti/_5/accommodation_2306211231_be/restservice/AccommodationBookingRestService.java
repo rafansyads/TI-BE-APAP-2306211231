@@ -12,6 +12,8 @@ import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.nio.charset.StandardCharsets;
+import java.net.URLDecoder;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -83,9 +85,8 @@ public class AccommodationBookingRestService {
         if (bookingId == null || bookingId.isBlank()) {
             throw new IllegalArgumentException("bookingId is required");
         }
-        return getBookingById(bookingId)
-                .map(AccommodationBookingMapper::toDto)
-                .orElseThrow(() -> new NoSuchElementException("Booking not found with ID: " + bookingId));
+        AccommodationBooking b = findBookingOrThrow(bookingId);
+        return AccommodationBookingMapper.toDto(b);
     }
 
     public AccommodationBookingDto createBooking(AccommodationBookingCreateRequest request) {
@@ -503,8 +504,7 @@ public class AccommodationBookingRestService {
         if (bookingId == null || bookingId.isBlank()) {
             throw new IllegalArgumentException("bookingId is required");
         }
-        AccommodationBooking booking = bookingRepository.findById(bookingId)
-                .orElseThrow(() -> new NoSuchElementException("Booking not found with ID: " + bookingId));
+        AccommodationBooking booking = findBookingOrThrow(bookingId);
 
         if (booking.getStatus() != null && booking.getStatus() != 0) {
             throw new IllegalStateException("Only bookings with status 0 (waiting for payment) can be paid");
@@ -572,8 +572,7 @@ public class AccommodationBookingRestService {
         if (bookingId == null || bookingId.isBlank()) {
             throw new IllegalArgumentException("bookingId is required");
         }
-        AccommodationBooking booking = bookingRepository.findById(bookingId)
-                .orElseThrow(() -> new NoSuchElementException("Booking not found with ID: " + bookingId));
+        AccommodationBooking booking = findBookingOrThrow(bookingId);
 
         int status = booking.getStatus() != null ? booking.getStatus() : 0;
         if (status != 0 && status != 1 && status != 3) {
@@ -626,6 +625,10 @@ public class AccommodationBookingRestService {
         }
 
         booking = bookingRepository.save(booking);
+        // Do NOT remove canceled bookings from the Room collection here.
+        // Removing a booking from the Room.bookings list with
+        // `orphanRemoval = true` causes JPA to delete the booking entity.
+        // Keep canceled bookings in the DB (status=2) so records/audit remain.
         return AccommodationBookingMapper.toDto(booking);
     }
 
@@ -633,8 +636,7 @@ public class AccommodationBookingRestService {
         if (bookingId == null || bookingId.isBlank()) {
             throw new IllegalArgumentException("bookingId is required");
         }
-        AccommodationBooking booking = bookingRepository.findById(bookingId)
-                .orElseThrow(() -> new NoSuchElementException("Booking not found with ID: " + bookingId));
+        AccommodationBooking booking = findBookingOrThrow(bookingId);
 
         // Allow refund action when a refund amount exists (>0). Typically status 3, but
         // tolerate 1 as well.
@@ -924,7 +926,15 @@ public class AccommodationBookingRestService {
      * Only invoked when the status is 2 or 4 after checkout Date
      */
     public void removeBookingFromRoom(AccommodationBooking book, Room room) {
-        if (book != null && book.getStatus() != null && (book.getStatus() == 2 || (book.getStatus() == 4 && book.getCheckOutDate() != null && book.getCheckOutDate().isBefore(LocalDateTime.now(ZoneId.of("Asia/Jakarta")))))) {
+        // Only remove bookings that are completed (status == 4) AND have a
+        // check-out date strictly before now (Asia/Jakarta). Do NOT remove
+        // canceled bookings (status == 2) here because removing them from the
+        // Room.bookings collection with `orphanRemoval = true` will delete the
+        // booking entity from the database.
+        if (book != null && book.getStatus() != null
+                && book.getStatus() == 4
+                && book.getCheckOutDate() != null
+                && book.getCheckOutDate().isBefore(LocalDateTime.now(ZoneId.of("Asia/Jakarta")))) {
             room.removeBooking(book);
         }
     }
@@ -935,10 +945,57 @@ public class AccommodationBookingRestService {
      */
     public void removeBookingsFromRoom(List<AccommodationBooking> bookings, Room room) {
         for (AccommodationBooking b : bookings) {
-            if (b != null && b.getStatus() != null && (b.getStatus() == 2 || (b.getStatus() == 4 && b.getCheckOutDate() != null && b.getCheckOutDate().isBefore(LocalDateTime.now(ZoneId.of("Asia/Jakarta")))))) {
+            if (b != null && b.getStatus() != null
+                    && b.getStatus() == 4
+                    && b.getCheckOutDate() != null
+                    && b.getCheckOutDate().isBefore(LocalDateTime.now(ZoneId.of("Asia/Jakarta")))) {
                 room.removeBooking(b);
             }
         }
+    }
+
+    /**
+     * Robust lookup for booking by id. Tries several normalization strategies
+     * (trim, URL-decode, strip quotes) and falls back to a contains()-based
+     * scan as a last resort. Throws NoSuchElementException if nothing matches.
+     */
+    private AccommodationBooking findBookingOrThrow(String bookingId) {
+        if (bookingId == null || bookingId.isBlank()) {
+            throw new IllegalArgumentException("bookingId is required");
+        }
+        String id = bookingId.trim();
+
+        // 1) direct lookup
+        var opt = bookingRepository.findById(id);
+        if (opt.isPresent()) return opt.get();
+
+        // 2) try URL decode (in case callers sent an encoded value)
+        try {
+            String dec = URLDecoder.decode(id, StandardCharsets.UTF_8.name());
+            if (!dec.equals(id)) {
+                opt = bookingRepository.findById(dec);
+                if (opt.isPresent()) return opt.get();
+            }
+        } catch (Exception ignore) {
+        }
+
+        // 3) strip surrounding quotes if present
+        String stripped = id.replaceAll("^\"|\"$", "");
+        if (!stripped.equals(id)) {
+            opt = bookingRepository.findById(stripped);
+            if (opt.isPresent()) return opt.get();
+        }
+
+        // 4) last resort: scan all bookings and match contains (helps with small
+        // formatting differences when the unique suffix is present)
+        var all = bookingRepository.findAll();
+        for (AccommodationBooking b : all) {
+            if (b.getBookingId() != null && b.getBookingId().contains(id)) {
+                return b;
+            }
+        }
+
+        throw new NoSuchElementException("Booking not found with ID: " + bookingId);
     }
 
     /**

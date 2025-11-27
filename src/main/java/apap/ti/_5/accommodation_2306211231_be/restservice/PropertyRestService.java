@@ -94,7 +94,30 @@ public class PropertyRestService {
 
     // DTO-based methods for controllers
     public List<PropertySummaryDto> getAllPropertiesDto() {
-        return propertyRepository.findByDeletedAtIsNull().stream()
+        // Build transient availability based on current ongoing bookings (now)
+        var props = propertyRepository.findByDeletedAtIsNull();
+        var now = LocalDateTime.now();
+        for (Property p : props) {
+            if (p.getListRoomType() == null) continue;
+            for (RoomType rt : p.getListRoomType()) {
+                if (rt.getListRoom() == null) continue;
+                for (Room r : rt.getListRoom()) {
+                    if (r.getBookings() == null) continue;
+                    for (AccommodationBooking b : r.getBookings()) {
+                        Integer st = b.getStatus();
+                        if (st == null) continue;
+                        if (st == 2) continue; // canceled ignored
+                        if (b.getCheckInDate() == null || b.getCheckOutDate() == null) continue;
+                        boolean ongoing = (now.isEqual(b.getCheckInDate()) || now.isAfter(b.getCheckInDate())) && now.isBefore(b.getCheckOutDate());
+                        if (ongoing) {
+                            r.setAvailabilityStatus(0); // transiently mark unavailable
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        return props.stream()
                 .map(PropertyMapper::toSummaryDto)
                 .collect(Collectors.toList());
     }
