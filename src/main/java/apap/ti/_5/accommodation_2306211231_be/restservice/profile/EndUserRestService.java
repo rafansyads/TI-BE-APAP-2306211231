@@ -8,6 +8,9 @@ import apap.ti._5.accommodation_2306211231_be.restdto.response.profile.CustomerR
 import apap.ti._5.accommodation_2306211231_be.restmapper.EndUserMapper;
 import apap.ti._5.accommodation_2306211231_be.restmapper.CustomerMapper;
 import apap.ti._5.accommodation_2306211231_be.restdto.request.profile.EndUserUpdateRequestDTO;
+import apap.ti._5.accommodation_2306211231_be.restdto.request.profile.CustomerGetSaldoRequestDTO;
+import apap.ti._5.accommodation_2306211231_be.restdto.request.profile.CustomerSetSaldoRequestDTO;
+import apap.ti._5.accommodation_2306211231_be.restdto.response.profile.CustomerSaldoResponseDTO;
 
 import lombok.RequiredArgsConstructor;
 
@@ -276,4 +279,61 @@ public class EndUserRestService {
 		return EndUserMapper.toDTO(target, role);
 	}
 
+	public CustomerSaldoResponseDTO getCustomerSaldo(String id, CustomerGetSaldoRequestDTO dto) {
+		Customer customer = customerRepository.findByUsername(dto.getUsername())
+				.orElseThrow(() -> new IllegalArgumentException("Customer not found"));
+
+		// Check whether the authenticated user is allowed to access this customer's saldo
+		// Only superadmin & the belonging customer themselves are allowed
+		// But if the id: String provided mismatch the request DTO id, deny access
+		Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+		boolean isSuperadmin = auth != null && auth.getAuthorities().stream().anyMatch(a -> "ROLE_SUPERADMIN".equals(a.getAuthority()));
+		String caller = auth == null ? null : auth.getName();
+		if (!isSuperadmin) {
+			// caller must match target username or email
+			if (caller == null || (!caller.equals(customer.getUsername()) && (customer.getEmail()==null || !caller.equalsIgnoreCase(customer.getEmail())))) {
+				throw new AccessDeniedException("You are not authorized to access this customer's saldo");
+			}
+		}
+		if (!id.equals(customer.getId().toString())) {
+			throw new AccessDeniedException("ID mismatch: you are not authorized to access this customer's saldo");
+		}
+		
+		CustomerSaldoResponseDTO responseDTO = new CustomerSaldoResponseDTO();
+		responseDTO.setUsername(customer.getUsername());
+		responseDTO.setSaldo(customer.getSaldo());
+		responseDTO.setUserId(customer.getId().toString());
+		return responseDTO;
+	}
+
+	@Transactional
+	public CustomerSaldoResponseDTO setCustomerSaldo(String id, CustomerSetSaldoRequestDTO dto) {
+		Customer customer = customerRepository.findByUsername(dto.getUsername())
+				.orElseThrow(() -> new IllegalArgumentException("Customer not found"));
+
+		// Check whether the authenticated user is allowed to access this customer's saldo
+		// Only superadmin & the belonging customer themselves are allowed
+		// But if the id: String provided mismatch the request DTO id, deny access
+		Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+		boolean isSuperadmin = auth != null && auth.getAuthorities().stream().anyMatch(a -> "ROLE_SUPERADMIN".equals(a.getAuthority()));
+		String caller = auth == null ? null : auth.getName();
+		if (!isSuperadmin) {
+			// caller must match target username or email
+			if (caller == null || (!caller.equals(customer.getUsername()) && (customer.getEmail()==null || !caller.equalsIgnoreCase(customer.getEmail())))) {
+				throw new AccessDeniedException("You are not authorized to access this customer's saldo");
+			}
+		}
+		if (!id.equals(customer.getId().toString())) {
+			throw new AccessDeniedException("ID mismatch: you are not authorized to access this customer's saldo");
+		}
+		
+		customer.setSaldo(dto.getSaldo());
+		customerRepository.save(customer);
+
+		CustomerSaldoResponseDTO responseDTO = new CustomerSaldoResponseDTO();
+		responseDTO.setUsername(customer.getUsername());
+		responseDTO.setSaldo(customer.getSaldo());
+		responseDTO.setUserId(customer.getId().toString());
+		return responseDTO;
+	}
 }

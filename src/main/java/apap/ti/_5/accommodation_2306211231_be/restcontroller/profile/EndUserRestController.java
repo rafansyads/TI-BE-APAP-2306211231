@@ -14,6 +14,9 @@ import apap.ti._5.accommodation_2306211231_be.restdto.response.profile.EndUserRe
 import apap.ti._5.accommodation_2306211231_be.restdto.request.profile.EndUserUpdateRequestDTO;
 import apap.ti._5.accommodation_2306211231_be.restservice.profile.EndUserRestService;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.profile.CustomerResponseDTO;
+import apap.ti._5.accommodation_2306211231_be.restdto.request.profile.CustomerGetSaldoRequestDTO;
+import apap.ti._5.accommodation_2306211231_be.restdto.request.profile.CustomerSetSaldoRequestDTO;
+import apap.ti._5.accommodation_2306211231_be.restdto.response.profile.CustomerSaldoResponseDTO;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -85,33 +88,36 @@ public class EndUserRestController {
         }
     }
 
-    // @GetMapping("/saldo/{identifier}")
-    // public ResponseEntity<BaseResponseDto<Integer>> getCustomerSaldo(@PathVariable String identifier) {
-    //     try {
-    //         Integer saldo = endUserRestService.getCustomerSaldoByIdentifier(identifier);
-    //         return ResponseUtil.success(saldo, "OK", HttpStatus.OK).toBuilder().build();
-    //     } catch (AccessDeniedException ex) {
-    //         return ResponseUtil.error("You are not authorized to access this resource.", HttpStatus.FORBIDDEN);
-    //     } catch (IllegalArgumentException ex) {
-    //         return ResponseUtil.error(ex.getMessage(), HttpStatus.BAD_REQUEST);
-    //     } catch (Exception ex) {
-    //         return ResponseUtil.error("Failed to fetch customer saldo", HttpStatus.INTERNAL_SERVER_ERROR);
-    //     }
-    // }
+    @GetMapping("/saldo/{identifier}")
+    public ResponseEntity<BaseResponseDto<CustomerSaldoResponseDTO>> getCustomerSaldo(
+            @PathVariable String identifier,
+            @RequestBody CustomerGetSaldoRequestDTO dto) {
+        try {
+            CustomerSaldoResponseDTO saldoDto = endUserRestService.getCustomerSaldo(identifier, dto);
+            return ResponseUtil.success(saldoDto, "OK", HttpStatus.OK).toBuilder().build();
+        } catch (AccessDeniedException ex) {
+            return ResponseUtil.error("You are not authorized to access this resource.", HttpStatus.FORBIDDEN);
+        } catch (IllegalArgumentException ex) {
+            return ResponseUtil.error(ex.getMessage(), HttpStatus.BAD_REQUEST);
+        } catch (Exception ex) {
+            return ResponseUtil.error("Failed to fetch customer saldo", HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
 
-    // @PutMapping("/saldo/{identifier}")
-    // public ResponseEntity<BaseResponseDto<Integer>> updateCustomerSaldo(
-    //         @PathVariable String identifier,
-    //         @RequestParam Integer amount) {
-    //     try {
-    //         Integer updatedSaldo = endUserRestService.updateCustomerSaldoByIdentifier(identifier, amount);
-    //         return ResponseUtil.success(updatedSaldo, "Updated", HttpStatus.OK).toBuilder().build();
-    //     } catch (AccessDeniedException ex) {
-    //         return ResponseUtil.error("You are not authorized to update this resource.", HttpStatus.FORBIDDEN);
-    //     } catch (IllegalArgumentException ex) {
-    //         return ResponseUtil.error(ex.getMessage(), HttpStatus.BAD_REQUEST);
-    //     } catch (Exception ex) {
-    //         return ResponseUtil.error("Failed to update customer saldo", HttpStatus.INTERNAL_SERVER_ERROR);
-    //     }
-    // }
+    @PutMapping("/saldo/{identifier}")
+    public ResponseEntity<BaseResponseDto<CustomerSaldoResponseDTO>> setCustomerSaldo(
+            @PathVariable String identifier,
+            @RequestBody CustomerSetSaldoRequestDTO dto) {
+        try {
+            CustomerSaldoResponseDTO saldoDto = endUserRestService.setCustomerSaldo(identifier, dto);
+            return ResponseUtil.success(saldoDto, "Updated", HttpStatus.OK).toBuilder().build();
+        } catch (AccessDeniedException ex) {
+            return ResponseUtil.error("You are not authorized to access this resource.", HttpStatus.FORBIDDEN);
+        } catch (IllegalArgumentException ex) {
+            return ResponseUtil.error(ex.getMessage(), HttpStatus.BAD_REQUEST);
+        } catch (Exception ex) {
+            return ResponseUtil.error("Failed to update customer saldo", HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
 }
