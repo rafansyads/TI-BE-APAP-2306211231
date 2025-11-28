@@ -1,5 +1,7 @@
 package apap.ti._5.accommodation_2306211231_be.restservice;
 
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -13,8 +15,6 @@ import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import java.net.URLDecoder;
-import java.nio.charset.StandardCharsets;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,7 +38,6 @@ import apap.ti._5.accommodation_2306211231_be.restdto.response.property.OwnerSum
 import apap.ti._5.accommodation_2306211231_be.restdto.response.property.PropertyDetailDto;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.property.PropertySummaryDto;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.room.RoomDetailDto;
-import apap.ti._5.accommodation_2306211231_be.restdto.response.room.RoomSummaryDto;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.room.roomtype.RoomTypeDetailDto;
 import apap.ti._5.accommodation_2306211231_be.restmapper.PropertyMapper;
 import apap.ti._5.accommodation_2306211231_be.restmapper.RoomMapper;
@@ -275,7 +274,10 @@ public class PropertyRestService {
         // property
         Map<Integer, Set<String>> typeNamesPerFloor = new HashMap<>();
         for (RoomTypeCreateRequest rtr : rtReqs) {
-            int floor = rtr.getFloor() != null ? rtr.getFloor() : 0;
+            int floor = rtr.getFloor() != null ? rtr.getFloor() : 1;
+            if (floor < 1 || floor > 9) {
+                throw new IllegalArgumentException("Floor number must be between 1 and 9");
+            }
             String nameKey = (rtr.getName() == null ? "" : rtr.getName().trim().toLowerCase());
             Set<String> names = typeNamesPerFloor.computeIfAbsent(floor, k -> new HashSet<>());
             if (names.contains(nameKey)) {
@@ -302,9 +304,9 @@ public class PropertyRestService {
         int totalRooms = 0;
 
         for (RoomTypeCreateRequest rtr : rtReqs) {
-            int floor = rtr.getFloor() != null ? rtr.getFloor() : 0;
-            if (floor > 9) {
-                throw new IllegalArgumentException("Floor number cannot exceed 9");
+            int floor = rtr.getFloor() != null ? rtr.getFloor() : 1;
+            if (floor < 1 || floor > 9) {
+                throw new IllegalArgumentException("Floor number must be between 1 and 9");
             }
             String generatedRtId = IdUtil.generateRoomTypeId(propertyId, rtr.getName(), floor);
 
@@ -425,12 +427,10 @@ public class PropertyRestService {
             throw new IllegalArgumentException("Invalid province code: " + request.getProvince());
         }
 
-        // Province provided: only allowed if matches existing; if existing is null,
-        // ignore the provided value
+        // Province provided: validate and apply change (allow updating province)
         if (request.getProvince() != null) {
-            if (existing.getProvince() != null && !request.getProvince().equals(existing.getProvince())) {
-                throw new IllegalArgumentException("Cannot change province code: " + request.getProvince());
-            }
+            // validated above already via ProvinceUtil
+            existing.setProvince(request.getProvince());
         }
 
         // Validate owner UUID ↔ name consistency on update as well (but do not mutate
@@ -453,8 +453,12 @@ public class PropertyRestService {
             }
         }
 
-        // Update allowed Property fields only
+        // Update allowed Property fields only (name/address/description)
         PropertyMapper.updateEntity(existing, request);
+        // Apply type update if provided (allow changing property type)
+        if (request.getType() != null) {
+            existing.setType(request.getType());
+        }
 
         // If there are room type updates, apply them
         if (request.getRoomTypes() != null && !request.getRoomTypes().isEmpty()) {
@@ -489,6 +493,21 @@ public class PropertyRestService {
                 RoomType rt = byId.get(rtReq.getRoomTypeId());
                 if (rt == null) {
                     throw new IllegalArgumentException("RoomType not found on this property: " + rtReq.getRoomTypeId());
+                }
+                // Floor handling: when frontend submits 0 for floor on existing room types,
+                // treat it as "no-op" (ignore). If a non-zero floor is provided, validate range.
+                if (rtReq.getFloor() != null) {
+                    int f = rtReq.getFloor();
+                    if (f == 0) {
+                        // ignore floor update for existing room type
+                    } else {
+                        if (f < 1 || f > 9) {
+                            throw new IllegalArgumentException("Floor number must be between 1 and 9");
+                        }
+                        // Note: we intentionally do not change existing RoomType.floor here
+                        // to avoid re-generating IDs or renumbering rooms. Frontend should
+                        // use updateroom endpoint to add new types on desired floors.
+                    }
                 }
                 // Enforce ID immutability: propertyId doesn't change, roomTypeId doesn't change
                 // Update allowed fields: price, description, facility
@@ -568,9 +587,9 @@ public class PropertyRestService {
         if (req == null) {
             throw new IllegalArgumentException("Request cannot be null");
         }
-        int floor = req.getFloor() != null ? req.getFloor() : 0;
-        if (floor > 9) {
-            throw new IllegalArgumentException("Floor number cannot exceed 9");
+        int floor = req.getFloor() != null ? req.getFloor() : 1;
+        if (floor < 1 || floor > 9) {
+            throw new IllegalArgumentException("Floor number must be between 1 and 9");
         }
         List<RoomCreateRequest> roomsReq = req.getRooms();
         if (roomsReq == null || roomsReq.isEmpty()) {
@@ -578,40 +597,40 @@ public class PropertyRestService {
         }
 
         // Find existing room type by name and floor; if not found, create it (ensuring
-        // no duplicate name on same floor)
-        RoomType targetRt = null;
-        for (RoomType rt : existing.getListRoomType()) {
-            int f = rt.getFloor() != null ? rt.getFloor() : 0;
-            if (f == floor && rt.getName().equals(req.getName())) {
-                targetRt = rt;
-                break;
-            }
+        // no duplicate name on same floor). Use trimmed, case-insensitive comparison
+        // consistent with createProperty validation.
+        if (req.getName() == null || req.getName().isBlank()) {
+            throw new IllegalArgumentException("Room type name cannot be blank");
         }
-        if (targetRt == null) {
-            boolean duplicate = existing.getListRoomType().stream()
-                    .anyMatch(rt -> (rt.getFloor() != null ? rt.getFloor() : 0) == floor
-                            && rt.getName().equalsIgnoreCase(req.getName()));
-            if (duplicate) {
-                throw new IllegalArgumentException(
-                        "Duplicate room type '" + req.getName() + "' on floor " + floor + " is not allowed");
-            }
-            String generatedRtId = IdUtil.generateRoomTypeId(propertyId, req.getName(), floor);
-            if (req.getRoomTypeId() != null && !req.getRoomTypeId().isBlank()
-                    && !req.getRoomTypeId().equals(generatedRtId)) {
-                throw new IllegalArgumentException(
-                        "roomTypeId mismatch: expected '" + generatedRtId + "' but got '" + req.getRoomTypeId() + "'");
-            }
-            targetRt = new RoomType();
-            targetRt.setRoomTypeId(generatedRtId);
-            targetRt.setName(req.getName());
-            targetRt.setPrice(req.getPrice());
-            targetRt.setDescription(req.getDescription());
-            targetRt.setCapacity(req.getCapacity());
-            targetRt.setFacility(req.getFacility());
-            targetRt.setFloor(floor);
-            targetRt.setProperty(existing);
-            existing.addRoomType(targetRt);
+        String reqNameKey = req.getName().trim().toLowerCase();
+
+        // Compute generated RoomTypeId candidate and reject if it already exists
+        // to avoid creating duplicate types or implicitly attaching rooms to an
+        // existing type in an unintended way.
+        String generatedRtIdCandidate = IdUtil.generateRoomTypeId(propertyId, req.getName(), floor);
+        if (roomTypeRepository.existsById(generatedRtIdCandidate)) {
+            throw new IllegalArgumentException(
+                "RoomType already exists: '" + generatedRtIdCandidate + "'. Use /property/update to modify existing room types or add rooms to an existing room type explicitly.");
         }
+
+        // At this point we require that the requested room type does not already
+        // exist (using the canonical generated RoomTypeId). The upstream check
+        // `generatedRtIdCandidate` already verifies repository-wide existence and
+        // will have rejected duplicates. Here we simply create a new RoomType and
+        // persist it; updateroom is designed for creating a new type + rooms.
+        String generatedRtId = IdUtil.generateRoomTypeId(propertyId, req.getName(), floor);
+        RoomType targetRt = new RoomType();
+        targetRt.setRoomTypeId(generatedRtId);
+        targetRt.setName(req.getName());
+        targetRt.setPrice(req.getPrice());
+        targetRt.setDescription(req.getDescription());
+        targetRt.setCapacity(req.getCapacity());
+        targetRt.setFacility(req.getFacility());
+        targetRt.setFloor(floor);
+        targetRt.setProperty(existing);
+        existing.addRoomType(targetRt);
+        // Persist immediately so subsequent reads include it
+        roomTypeRepository.save(targetRt);
 
         // Build per-floor next index from existing rooms across the property
         Map<Integer, Integer> nextUnitByFloor = new HashMap<>();
