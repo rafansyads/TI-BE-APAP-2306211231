@@ -137,55 +137,80 @@ public class PropertyRestService {
                 .orElseThrow(() -> new IllegalArgumentException("Property not found: " + propertyId));
 
         // If no filters, regular mapping
-        if (checkIn == null || checkIn.isBlank() || checkOut == null || checkOut.isBlank()) {
+        // If no date filters provided at all, return canonical DTO
+        if ((checkIn == null || checkIn.isBlank()) && (checkOut == null || checkOut.isBlank())) {
             return PropertyMapper.toDetailDto(p);
         }
 
         // Compose normalized anchors (14:00 in, 12:00 out)
-        LocalDateTime in = DateUtil.normalizeCheckIn(LocalDateTime.parse(checkIn + "T00:00:00"));
-        LocalDateTime out = DateUtil.normalizeCheckOut(LocalDateTime.parse(checkOut + "T00:00:00"));
+        LocalDateTime in = null;
+        LocalDateTime out = null;
+        if (checkIn != null && !checkIn.isBlank()) {
+            in = DateUtil.normalizeCheckIn(LocalDateTime.parse(checkIn + "T00:00:00"));
+        }
+        if (checkOut != null && !checkOut.isBlank()) {
+            out = DateUtil.normalizeCheckOut(LocalDateTime.parse(checkOut + "T00:00:00"));
+        }
+
+        // If only one side provided, construct a sensible one-night window around the provided date
+        if (in != null && out == null) {
+            out = DateUtil.normalizeCheckOut(in.plusDays(1));
+        } else if (out != null && in == null) {
+            in = DateUtil.normalizeCheckIn(out.minusDays(1));
+        }
 
         // Start with base dto
         PropertyDetailDto dto = PropertyMapper.toDetailDto(p);
         if (dto == null) return null;
 
-        // Evaluate rooms availability but keep all rooms; mark availability via computed availabilityStatus (1=available,0=unavailable)
+        // Evaluate rooms availability but keep all rooms; DO NOT mutate domain Room objects.
+        // Instead collect availability per-room and write into the DTO only.
         List<Room> filteredRooms = new ArrayList<>();
+        Map<String, Integer> availabilityMap = new HashMap<>();
         if (p.getListRoomType() != null) {
             for (RoomType rt : p.getListRoomType()) {
                 if (rt.getListRoom() == null) continue;
                 for (Room r : rt.getListRoom()) {
-                    // Compute dynamic availability for requested window.
                     boolean available = true;
                     // Active flag
                     if (r.getActiveRoom() != null && r.getActiveRoom() == 0) available = false;
-                    // Maintenance overlap
-                    if (available && r.getMaintenanceStart() != null && r.getMaintenanceEnd() != null
-                        && DateUtil.isOverlapping(in, out, r.getMaintenanceStart(), r.getMaintenanceEnd())) {
-                        available = false;
-                    }
-                    // Booking overlap (exclude canceled)
+                    // NOTE: Per frontend contract, ignore maintenanceStart/maintenanceEnd
+                    // when computing the DTO availability for the filtered view. Availability
+                    // will be determined from active flag and bookings only.
+                    // Booking overlap: consider only statuses 0,1,3,4. For status 4, ignore if booking is already over (now > checkout)
                     if (available && r.getBookings() != null) {
                         for (AccommodationBooking b : r.getBookings()) {
                             Integer st = b.getStatus();
-                            if (st != null && st == 2) continue;
+                            if (st == null) continue;
+                            boolean consider = (st == 0 || st == 1 || st == 3 || st == 4);
+                            if (!consider) continue;
+                            if (st == 4) {
+                                // if booking status==4 but it's already past its checkout, do not treat as active
+                                if (b.getCheckOutDate() != null && LocalDateTime.now().isAfter(b.getCheckOutDate())) {
+                                    continue;
+                                }
+                            }
                             if (b.getCheckInDate() != null && b.getCheckOutDate() != null
                                 && DateUtil.isOverlapping(in, out, b.getCheckInDate(), b.getCheckOutDate())) {
                                 available = false; break;
                             }
                         }
                     }
-                    // Mutate transient availabilityStatus for mapping (1=available,0=unavailable)
-                    r.setAvailabilityStatus(available ? 1 : 0);
+
                     filteredRooms.add(r);
+                    availabilityMap.put(r.getRoomId(), available ? 1 : 0);
                 }
             }
         }
 
-        // Remap rooms list to DTO (include all rooms with updated availabilityStatus)
+        // Remap rooms list to DTO (include all rooms) and then override availabilityStatus on DTOs
         List<RoomDetailDto> roomDtos = filteredRooms.stream()
                 .map(RoomMapper::toDetailDto)
                 .collect(Collectors.toList());
+        for (RoomDetailDto rd : roomDtos) {
+            Integer av = availabilityMap.get(rd.getRoomId());
+            if (av != null) rd.setAvailabilityStatus(av);
+        }
         dto.setRooms(roomDtos);
         // roomTypes remain summaries; FE groups rooms by roomTypeId from rooms list
         return dto;
@@ -782,33 +807,48 @@ public class PropertyRestService {
         RoomTypeDetailDto dto = RoomTypeMapper.toDetailDto(roomType);
         if (dto == null) return null;
 
+        // Evaluate availability per-room based ONLY on bookings for the requested date range.
+        // Do NOT consider maintenanceStart/maintenanceEnd or activeRoom when hijacking the DTO.
         List<Room> evaluated = new ArrayList<>();
+        Map<String, Integer> availabilityMap = new HashMap<>();
+        var now = LocalDateTime.now();
         if (roomType.getListRoom() != null) {
             for (Room r : roomType.getListRoom()) {
                 boolean available = true;
-                if (r.getActiveRoom() != null && r.getActiveRoom() == 0) available = false;
-                if (available && r.getMaintenanceStart() != null && r.getMaintenanceEnd() != null
-                        && DateUtil.isOverlapping(in, out, r.getMaintenanceStart(), r.getMaintenanceEnd())) {
-                    available = false;
-                }
-                if (available && r.getBookings() != null) {
+                if (r.getBookings() != null) {
                     for (AccommodationBooking b : r.getBookings()) {
                         Integer st = b.getStatus();
-                        if (st != null && st == 2) continue;
-                        if (b.getCheckInDate() != null && b.getCheckOutDate() != null
-                                && DateUtil.isOverlapping(in, out, b.getCheckInDate(), b.getCheckOutDate())) {
-                            available = false; break;
+                        // treat statuses 0,1,3 as blocking when overlap
+                        if (st != null && (st == 0 || st == 1 || st == 3)) {
+                            if (b.getCheckInDate() != null && b.getCheckOutDate() != null
+                                    && DateUtil.isOverlapping(in, out, b.getCheckInDate(), b.getCheckOutDate())) {
+                                available = false; break;
+                            }
+                        }
+                        // status 4: consider blocking only if booking has not already finished (checkout >= now)
+                        if (st != null && st == 4) {
+                            if (b.getCheckOutDate() != null && (b.getCheckOutDate().isAfter(now) || b.getCheckOutDate().isEqual(now))) {
+                                if (b.getCheckInDate() != null && b.getCheckOutDate() != null
+                                        && DateUtil.isOverlapping(in, out, b.getCheckInDate(), b.getCheckOutDate())) {
+                                    available = false; break;
+                                }
+                            }
                         }
                     }
                 }
-                r.setAvailabilityStatus(available ? 1 : 0);
+                availabilityMap.put(r.getRoomId(), available ? 1 : 0);
                 evaluated.add(r);
             }
         }
 
+        // Map to DTOs and then override availabilityStatus on DTOs only (do not mutate domain Room)
         List<RoomDetailDto> roomDtos = evaluated.stream()
                 .map(RoomMapper::toDetailDto)
                 .collect(Collectors.toList());
+        for (RoomDetailDto rd : roomDtos) {
+            Integer av = availabilityMap.get(rd.getRoomId());
+            if (av != null) rd.setAvailabilityStatus(av);
+        }
         dto.setRooms(roomDtos);
         return dto;
     }
