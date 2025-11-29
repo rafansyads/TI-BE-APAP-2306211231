@@ -14,10 +14,17 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpMethod;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.web.client.RestTemplate;
+import java.util.Map;
+import java.util.HashMap;
 import lombok.RequiredArgsConstructor;
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -50,6 +57,7 @@ public class AuthRestController {
     private final JwtTokenService jwtTokenService;
     private final RefreshTokenService refreshTokenService;
     private final JwtTokenBlacklist jwtTokenBlacklist;
+    private final RestTemplate restTemplate;
 
     @PostMapping("/login")
     public ResponseEntity<BaseResponseDto<LoginResponseDTO>> login(
@@ -77,12 +85,14 @@ public class AuthRestController {
             if (ip == null || ip.isBlank())
                 ip = servletRequest.getRemoteAddr();
             String ua = servletRequest.getHeader("User-Agent");
-            
+
             // create refresh token and return both tokens in headers
             String refreshToken = refreshTokenService.createRefreshToken(user.getUsername(), ip, ua);
             HttpHeaders headers = new HttpHeaders();
             headers.set("Authorization", "Bearer " + token);
             headers.set("Refresh-Token", refreshToken);
+            // expose these headers for this response so browser JS can read them
+            headers.set("Access-Control-Expose-Headers", "Refresh-Token, Authorization");
             return ResponseUtil.success(
                     data,
                     "Login success",
@@ -134,7 +144,8 @@ public class AuthRestController {
             String token = authorization.substring(7).trim();
             try {
                 Date exp = jwtUtils.getExpirationFromJwtToken(token);
-                long expMillis = (exp != null) ? exp.getTime() : (System.currentTimeMillis() + jwtUtils.getJwtExpirationMs());
+                long expMillis = (exp != null) ? exp.getTime()
+                        : (System.currentTimeMillis() + jwtUtils.getJwtExpirationMs());
                 jwtTokenBlacklist.revoke(token, expMillis);
             } catch (Exception ignored) {
                 // if anything goes wrong revoking, we still proceed with logout
@@ -176,7 +187,8 @@ public class AuthRestController {
 
         LoginResponseDTO refreshed = null;
 
-        // If Authorization header provided, prefer delegated refresh flow validating existing token
+        // If Authorization header provided, prefer delegated refresh flow validating
+        // existing token
         if (authorization != null && authorization.startsWith("Bearer ")) {
             String token = authorization.substring(7).trim();
             if (token != null && !token.isBlank()) {
@@ -184,8 +196,10 @@ public class AuthRestController {
             }
         }
 
-        // If refreshed still null, perform refresh-only flow: issue a new access token based on
-        // the username/email and roles associated with the user. This lets clients that only
+        // If refreshed still null, perform refresh-only flow: issue a new access token
+        // based on
+        // the username/email and roles associated with the user. This lets clients that
+        // only
         // hold a refresh token recover an access token after restart.
         if (refreshed == null) {
             try {
@@ -194,8 +208,10 @@ public class AuthRestController {
                     return ResponseUtil.error("User not found", HttpStatus.UNAUTHORIZED);
                 }
                 var roles = authRestService.resolveRoles(user);
-                String token = jwtUtils.generateJwtToken(user.getId(), user.getUsername(), user.getEmail(), user.getName(), roles);
-                refreshed = AuthMapper.toLoginResponseDto(user, roles, token, Instant.now().plusMillis(jwtUtils.getJwtExpirationMs()));
+                String token = jwtUtils.generateJwtToken(user.getId(), user.getUsername(), user.getEmail(),
+                        user.getName(), roles);
+                refreshed = AuthMapper.toLoginResponseDto(user, roles, token,
+                        Instant.now().plusMillis(jwtUtils.getJwtExpirationMs()));
             } catch (Exception e) {
                 return ResponseUtil.error("Unable to refresh token", HttpStatus.UNAUTHORIZED);
             }
@@ -226,13 +242,16 @@ public class AuthRestController {
         }
         if (newRefresh != null) {
             headers.set("Refresh-Token", newRefresh);
+            // expose rotated refresh token and authorization header to browser JS
+            headers.set("Access-Control-Expose-Headers", "Refresh-Token, Authorization");
         }
 
         return ResponseUtil.success(refreshed, "Token refreshed", HttpStatus.OK).toBuilder().headers(headers).build();
     }
 
     @PostMapping("/forward")
-    public ResponseEntity<BaseResponseDto<String>> forwardToExternal(
+    public ResponseEntity<BaseResponseDto<Map<String, Object>>> forwardToExternal(
+            @RequestParam(value = "redirectTo", required = false) String redirectTo,
             @RequestBody BaseRequestDto<ForwardRequestDTO> request,
             HttpServletRequest servletRequest) {
         if (request.getData() == null) {
@@ -243,6 +262,11 @@ public class AuthRestController {
         String targetUrl = payload.getTargetUrl();
         if (targetUrl == null || targetUrl.isBlank()) {
             return ResponseUtil.error("Missing targetUrl in payload", HttpStatus.BAD_REQUEST);
+        }
+        // Normalize targetUrl: ensure scheme exists (prefer http)
+        targetUrl = targetUrl.trim();
+        if (!targetUrl.matches("(?i)^https?://.*")) {
+            targetUrl = "http://" + targetUrl;
         }
 
         // Resolve current authenticated user. Prefer SecurityContext if present.
@@ -257,48 +281,90 @@ public class AuthRestController {
         }
         var roles = authRestService.resolveRoles(user);
 
-        // Create an access token for the user to send to the target (short-lived if possible)
-        String token = jwtUtils.generateJwtToken(user.getId(), user.getUsername(), user.getEmail(), user.getName(), roles);
+        // Create an access token for the user to send to the target
+        String token = jwtUtils.generateJwtToken(user.getId(), user.getUsername(), user.getEmail(), user.getName(),
+                roles);
 
-        // Build a minimal HTML page with an auto-submitting POST form. The access token is placed in
-        // a hidden field named `accessToken`. Additional params from request will also be included.
-        StringBuilder html = new StringBuilder();
-        html.append("<!doctype html><html><head><meta charset='utf-8'><title>Redirecting</title></head>");
-        html.append("<body onload='document.forms[0].submit()'>\n");
-        html.append("<form method='post' action='").append(htmlEscape(targetUrl)).append("'>\n");
-        html.append("<input type='hidden' name='accessToken' value='").append(htmlEscape(token)).append("' />\n");
-
+        // Build JSON payload to send to the downstream backend
+        Map<String, Object> forwardBody = new HashMap<>();
+        forwardBody.put("accessToken", token);
         if (payload.getParams() != null) {
-            for (var e : payload.getParams().entrySet()) {
-                String k = e.getKey();
-                String v = e.getValue();
-                if (k == null) continue;
-                html.append("<input type='hidden' name='").append(htmlEscape(k)).append("' value='").append(htmlEscape(v)).append("' />\n");
+            forwardBody.put("params", payload.getParams());
+        }
+        if (redirectTo != null && !redirectTo.isBlank()) {
+            String normalizedRedirect = redirectTo.trim();
+            if (!normalizedRedirect.matches("(?i)^https?://.*")) {
+                normalizedRedirect = "http://" + normalizedRedirect;
             }
+            forwardBody.put("redirectTo", normalizedRedirect);
         }
 
-        html.append("<noscript><p>JavaScript is required to complete authentication. <button type='submit'>Continue</button></p></noscript>");
-        html.append("</form></body></html>");
+        // capture client metadata
+        String ip = servletRequest.getHeader("X-Forwarded-For");
+        if (ip == null || ip.isBlank())
+            ip = servletRequest.getRemoteAddr();
+        String ua = servletRequest.getHeader("User-Agent");
+        forwardBody.put("clientIp", ip);
+        forwardBody.put("userAgent", ua);
 
-        HttpHeaders headers = new HttpHeaders();
-        // If the frontend forwarded an Authorization header, resume it and include in the response headers
+        // Prepare outgoing headers for the call to the downstream service
+        HttpHeaders outHeaders = new HttpHeaders();
+        outHeaders.setContentType(MediaType.APPLICATION_JSON);
         String incomingAuth = servletRequest.getHeader("Authorization");
         if (incomingAuth != null && !incomingAuth.isBlank()) {
-            headers.set("Authorization", incomingAuth);
+            // propagate incoming Authorization if present
+            outHeaders.set("Authorization", incomingAuth);
+        }
+        // propagate incoming Refresh-Token header if present so downstream can consume
+        // it
+        String incomingRefresh = servletRequest.getHeader("Refresh-Token");
+        if (incomingRefresh != null && !incomingRefresh.isBlank()) {
+            outHeaders.set("Refresh-Token", incomingRefresh);
         }
 
-        // Also include a header to indicate the token we embedded for forwarding (if caller wants it)
-        headers.set("X-Forward-Token", token);
+        ResponseEntity<BaseResponseDto<Map<String, Object>>> downstreamResp;
+        try {
+            HttpEntity<Map<String, Object>> httpEntity = new HttpEntity<>(forwardBody, outHeaders);
+            downstreamResp = restTemplate.exchange(
+                    targetUrl,
+                    HttpMethod.POST,
+                    httpEntity,
+                    new ParameterizedTypeReference<BaseResponseDto<Map<String, Object>>>() {
+                    });
+        } catch (Exception e) {
+            return ResponseUtil.error("Failed to forward request: " + e.getMessage(), HttpStatus.BAD_GATEWAY);
+        }
 
-        // Return the HTML as the response payload (string) wrapped in BaseResponseDto JSON.
-        return ResponseUtil.success(html.toString(), "Forward HTML generated", HttpStatus.OK)
-                .toBuilder()
-                .headers(headers)
-                .build();
+        HttpHeaders responseHeaders = new HttpHeaders();
+        if (incomingAuth != null && !incomingAuth.isBlank()) {
+            responseHeaders.set("Authorization", incomingAuth);
+        }
+        responseHeaders.set("X-Forward-Token", token);
+
+        // If downstream provided a Refresh-Token header, expose it manually in our
+        // response headers
+        var downstreamRefresh = downstreamResp.getHeaders().getFirst("Refresh-Token");
+        if (downstreamRefresh != null && !downstreamRefresh.isBlank()) {
+            responseHeaders.set("Refresh-Token", downstreamRefresh);
+            // expose the header for this response only so frontend JS can read it
+            responseHeaders.set("Access-Control-Expose-Headers", "Refresh-Token, Authorization, X-Forward-Token");
+        }
+
+        var downstreamBody = downstreamResp.getBody();
+        Map<String, Object> data = null;
+        if (downstreamBody != null) {
+            data = downstreamBody.getData();
+        }
+
+        HttpStatus status = HttpStatus.resolve(downstreamResp.getStatusCode().value());
+        if (status == null)
+            status = HttpStatus.FOUND;
+        return ResponseUtil.success(data, "Forward response", status).toBuilder().headers(responseHeaders).build();
     }
 
     private String htmlEscape(String s) {
-        if (s == null) return "";
+        if (s == null)
+            return "";
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
                 .replace("\"", "&quot;").replace("'", "&#x27;");
     }
