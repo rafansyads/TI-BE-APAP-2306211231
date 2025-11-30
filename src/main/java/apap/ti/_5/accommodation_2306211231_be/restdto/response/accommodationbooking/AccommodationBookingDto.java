@@ -1,6 +1,7 @@
 package apap.ti._5.accommodation_2306211231_be.restdto.response.accommodationbooking;
 
 import jakarta.validation.constraints.*;
+import java.time.LocalDateTime;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -10,8 +11,8 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class AccommodationBookingDto {
     @NotBlank private String bookingId; // provided by client
-    @NotBlank private String checkInDate;  // ISO strings for API
-    @NotBlank private String checkOutDate;
+    @NotNull private LocalDateTime checkInDate;  // ISO LocalDateTime in JSON
+    @NotNull private LocalDateTime checkOutDate;
     @NotNull @Min(0) private Integer totalDays;
     @NotNull @Min(0) private Integer totalPrice;
     @NotNull @Min(0) @Max(3) private Integer status;
@@ -24,4 +25,13 @@ public class AccommodationBookingDto {
     @NotNull @Min(0) private Integer extraPay;
     @NotNull @Min(1) private Integer capacity;
     @NotBlank private String roomId;
+    // Convenience fields for FE update validation
+    private String propertyName;
+    private String roomTypeName;
+    private String roomName;
+    // Optional: include room type base price so FE can validate/update totals
+    @Min(0) private Integer roomTypePrice;
+    // Timestamps
+    private LocalDateTime createdDate;
+    private LocalDateTime updatedDate;
 }

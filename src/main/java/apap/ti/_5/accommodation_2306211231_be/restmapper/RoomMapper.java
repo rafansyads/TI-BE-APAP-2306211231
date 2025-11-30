@@ -1,12 +1,13 @@
 package apap.ti._5.accommodation_2306211231_be.restmapper;
 
+import java.time.LocalDateTime;
+import apap.ti._5.accommodation_2306211231_be.models.AccommodationBooking;
+
 import apap.ti._5.accommodation_2306211231_be.models.Room;
 import apap.ti._5.accommodation_2306211231_be.restdto.request.room.RoomCreateRequest;
 import apap.ti._5.accommodation_2306211231_be.restdto.request.room.RoomUpdateRequest;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.room.RoomDetailDto;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.room.RoomSummaryDto;
-
-import java.time.LocalDateTime;
 
 public final class RoomMapper {
     private RoomMapper() {}
@@ -27,7 +28,42 @@ public final class RoomMapper {
         RoomDetailDto dto = new RoomDetailDto();
         dto.setRoomId(r.getRoomId());
         dto.setName(r.getName());
-        dto.setAvailabilityStatus(r.getAvailabilityStatus());
+        // compute availability considering maintenance window timing
+        Integer computedAvailability = r.getAvailabilityStatus();
+        if (r.getMaintenanceStart() != null && r.getMaintenanceEnd() != null) {
+            var now = java.time.LocalDateTime.now();
+            var start = r.getMaintenanceStart();
+            var end = r.getMaintenanceEnd();
+            // Inclusive at start, exclusive at end to match 1->0 at start and 0->1 at end
+            boolean inMaintenance = (now.isEqual(start) || now.isAfter(start)) && now.isBefore(end);
+            if (inMaintenance) {
+                computedAvailability = 0; // force unavailable during maintenance
+            } else if (now.isEqual(end) || now.isAfter(end)) {
+                // maintenance finished – if previously switched off due to maintenance, expose available again
+                if (computedAvailability != null && computedAvailability == 0) {
+                    computedAvailability = 1;
+                }
+            }
+        }
+        // booking-based override: if there is an ongoing booking (now between
+        // checkInDate (inclusive) and checkOutDate (exclusive)) with status in
+        // {0,1,3,4} then force unavailable in the response (transient only)
+        if (computedAvailability != null && computedAvailability == 1 && r.getBookings() != null) {
+            var now = LocalDateTime.now();
+            for (AccommodationBooking b : r.getBookings()) {
+                Integer st = b.getStatus();
+                if (st == null) continue;
+                if (st == 2) continue; // canceled ignored
+                if (b.getCheckInDate() == null || b.getCheckOutDate() == null) continue;
+                boolean ongoing = (now.isEqual(b.getCheckInDate()) || now.isAfter(b.getCheckInDate())) && now.isBefore(b.getCheckOutDate());
+                if (ongoing) {
+                    computedAvailability = 0;
+                    break;
+                }
+            }
+        }
+
+        dto.setAvailabilityStatus(computedAvailability);
         dto.setActiveRoom(r.getActiveRoom());
         dto.setMaintenanceStart(r.getMaintenanceStart() != null ? r.getMaintenanceStart().toString() : null);
         dto.setMaintenanceEnd(r.getMaintenanceEnd() != null ? r.getMaintenanceEnd().toString() : null);

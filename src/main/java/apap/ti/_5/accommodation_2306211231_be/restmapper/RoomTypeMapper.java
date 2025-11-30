@@ -4,6 +4,7 @@ import apap.ti._5.accommodation_2306211231_be.models.RoomType;
 import apap.ti._5.accommodation_2306211231_be.restdto.request.room.roomtype.RoomTypeCreateRequest;
 import apap.ti._5.accommodation_2306211231_be.restdto.request.room.roomtype.RoomTypeUpdateRequest;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.room.RoomSummaryDto;
+import apap.ti._5.accommodation_2306211231_be.restdto.response.room.RoomDetailDto;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.room.roomtype.RoomTypeDetailDto;
 import apap.ti._5.accommodation_2306211231_be.restdto.response.room.roomtype.RoomTypeSummaryDto;
 
@@ -30,8 +31,8 @@ public final class RoomTypeMapper {
         dto.setFloor(rt.getFloor());
         dto.setPropertyId(rt.getProperty() != null ? rt.getProperty().getPropertyId() : null);
         if (rt.getListRoom() != null) {
-            List<RoomSummaryDto> rooms = rt.getListRoom().stream()
-                    .map(RoomMapper::toSummaryDto)
+            List<RoomDetailDto> rooms = rt.getListRoom().stream()
+                    .map(RoomMapper::toDetailDto)
                     .collect(Collectors.toList());
             dto.setRooms(rooms);
         }

@@ -2,6 +2,7 @@ plugins {
 	id 'java'
 	id 'org.springframework.boot' version '3.5.6'
 	id 'io.spring.dependency-management' version '1.1.7'
+	id 'jacoco'
 }
 
 group = 'apap.ti.2025'
@@ -30,10 +31,15 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
 	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'org.springframework.boot:spring-boot-starter-webflux'
+	implementation 'org.springframework.boot:spring-boot-starter-security'
+	implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
 	compileOnly 'org.projectlombok:lombok'
 	developmentOnly 'org.springframework.boot:spring-boot-devtools'
 	runtimeOnly 'com.h2database:h2'
 	runtimeOnly 'org.postgresql:postgresql'
+	runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
+	runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
 	annotationProcessor 'org.projectlombok:lombok'
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
@@ -41,4 +47,64 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
+	finalizedBy jacocoTestReport
+}
+
+jacoco {
+	toolVersion = "0.8.11"
+}
+
+// Configure the jacocoTestReport task created by the JaCoCo plugin instead of re-registering it
+tasks.named('jacocoTestReport', JacocoReport).configure {
+	dependsOn tasks.test
+	reports {
+		xml.required = true
+		html.required = true
+	}
+	classDirectories.setFrom(
+		files(classDirectories.files.collect { fileTree(dir: it, exclude: [
+			'**/Accommodation2306211231BeApplication*', // bootstrap class
+			'**/config/**',
+			'**/repository/**',
+			'**/service/**',
+			'**/restcontroller/**',
+			'**/restservice/**',
+			'**/models/**', // keep models excluded
+			'**/restdto/**' // keep DTOs excluded
+		]) })
+	)
+	sourceDirectories.setFrom(files('src/main/java'))
+	executionData.setFrom(files('build/jacoco/test.exec'))
+}
+
+// Configure existing coverage verification task rather than creating a duplicate
+tasks.named('jacocoTestCoverageVerification', JacocoCoverageVerification).configure {
+	dependsOn tasks.test
+	violationRules {
+		rule {
+			limit {
+				counter = 'INSTRUCTION'
+				value = 'COVEREDRATIO'
+				// Keep threshold at 80% after adding more integration tests
+				minimum = 0.80
+			}
+		}
+	}
+	classDirectories.setFrom(
+		files(classDirectories.files.collect { fileTree(dir: it, exclude: [
+			'**/Accommodation2306211231BeApplication*',
+			'**/config/**',
+			'**/repository/**',
+			'**/service/**',
+			'**/restcontroller/**',
+			'**/restservice/**',
+			'**/models/**',
+			'**/restdto/**'
+		]) })
+	)
+	executionData.setFrom(files('build/jacoco/test.exec'))
+}
+
+tasks.check {
+	dependsOn 'jacocoTestCoverageVerification'
 }

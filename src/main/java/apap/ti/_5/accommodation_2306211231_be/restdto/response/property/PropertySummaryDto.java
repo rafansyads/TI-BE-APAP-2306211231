@@ -12,5 +12,7 @@ public class PropertySummaryDto {
     private String propertyName;
     private Integer type;
     private Integer province;
+    private String provinceName; // derived from province code
     private Integer activeStatus;
+    private Integer totalRoom;
 }

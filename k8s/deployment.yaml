@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: travel-apap-accommodation-be
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: travel-apap-accommodation-be
+  template:
+    metadata:
+      labels:
+        app: travel-apap-accommodation-be
+    spec:
+      containers:
+        - name: springboot-container
+          image: rafansyadsui/travel-apap-accommodation-be:REPLACE_ME_TAG
+          ports:
+            - containerPort: 8082
+          env:
+            - name: DATABASE_URL_PROD_1
+              valueFrom:
+                configMapKeyRef:
+                  name: travel-apap-accommodation-be-config
+                  key: DATABASE_URL_PROD_1
+            - name: DATABASE_USERNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: travel-apap-accommodation-be-config
+                  key: DATABASE_USERNAME
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: travel-apap-accommodation-be-secret
+                  key: DATABASE_PASSWORD
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: travel-apap-accommodation-be-secret
+                  key: JWT_SECRET_KEY
+            - name: CORS_ALLOWED_ORIGINS
+              valueFrom:
+                secretKeyRef:
+                  name: travel-apap-accommodation-be-secret
+                  key: CORS_ALLOWED_ORIGINS

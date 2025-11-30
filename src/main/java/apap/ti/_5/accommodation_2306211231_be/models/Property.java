@@ -62,6 +62,12 @@ public class Property {
     @Max(1)
     private Integer activeStatus;
 
+    // profit always starts from 0
+    @Column(name = "profit", nullable = false)
+    @Min(0)
+    @Builder.Default
+    private Integer profit = 0;
+
     @Column(name = "owner_name", nullable = false, length = 255)
     @NotBlank
     private String ownerName;
@@ -87,6 +93,11 @@ public class Property {
     @Builder.Default
     private List<RoomType> listRoomType = new ArrayList<>();
 
+    @OneToMany(mappedBy = "property", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonManagedReference("property-reviews")
+    @Builder.Default
+    private List<AccommodationReview> reviews = new ArrayList<>();
+
     public void addRoomType(RoomType roomType) {
         listRoomType.add(roomType);
         roomType.setProperty(this);
@@ -95,5 +106,15 @@ public class Property {
     public void removeRoomType(RoomType roomType) {
         listRoomType.remove(roomType);
         roomType.setProperty(null);
+    }
+
+    public void addReview(AccommodationReview review) {
+        reviews.add(review);
+        review.setProperty(this);
+    }
+
+    public void removeReview(AccommodationReview review) {
+        reviews.remove(review);
+        review.setProperty(null);
     }
 }

@@ -17,24 +17,24 @@ public class RoomRestService {
     private final RoomRepository roomRepository;
 
     // Entity helpers (to be implemented later)
-    public Optional<Room> getById(String roomId) {
-        throw new UnsupportedOperationException("Not implemented yet");
-    }
+    // public Optional<Room> getById(String roomId) {
+    //     throw new UnsupportedOperationException("Not implemented yet");
+    // }
 
-    public List<Room> getByRoomTypeId(String roomTypeId) {
-        throw new UnsupportedOperationException("Not implemented yet");
-    }
+    // public List<Room> getByRoomTypeId(String roomTypeId) {
+    //     throw new UnsupportedOperationException("Not implemented yet");
+    // }
 
-    public List<Room> getByPropertyId(String propertyId) {
-        throw new UnsupportedOperationException("Not implemented yet");
-    }
+    // public List<Room> getByPropertyId(String propertyId) {
+    //     throw new UnsupportedOperationException("Not implemented yet");
+    // }
 
-    // DTO helpers (to be implemented later)
-    public RoomDetailDto getDetailDto(String roomId) {
-        throw new UnsupportedOperationException("Not implemented yet");
-    }
+    // // DTO helpers (to be implemented later)
+    // public RoomDetailDto getDetailDto(String roomId) {
+    //     throw new UnsupportedOperationException("Not implemented yet");
+    // }
 
-    public List<RoomSummaryDto> getSummariesByRoomType(String roomTypeId) {
-        throw new UnsupportedOperationException("Not implemented yet");
-    }
+    // public List<RoomSummaryDto> getSummariesByRoomType(String roomTypeId) {
+    //     throw new UnsupportedOperationException("Not implemented yet");
+    // }
 }

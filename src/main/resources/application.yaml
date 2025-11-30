@@ -8,19 +8,30 @@ spring:
         enabled: true
 
   profiles:
+    # active: 'prod'
     active: 'dev'
+    # active: 'test'
 
   jpa:
     hibernate:
       ddl-auto: create-drop
-      
+      # ddl-auto: update
+
     # Uncomment if you want SQL logging (previously added during debugging)
     # show-sql: true
     # properties:
     #   hibernate:
     #     format_sql: true
 
+  main:
+    allow-circular-references: true
+
+travel-apap-accommodation-be:
+  app:
+    jwtSecret: ${JWT_SECRET_KEY}
+    jwtExpirationMs: 86400000 # 1 day in milliseconds
+
 server:
-  port: 8081
+  port: ${SERVER_PORT_1:8082}
   servlet:
     context-path: /api
