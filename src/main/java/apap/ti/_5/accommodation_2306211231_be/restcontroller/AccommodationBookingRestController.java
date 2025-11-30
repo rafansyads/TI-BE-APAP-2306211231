@@ -21,11 +21,13 @@ import apap.ti._5.accommodation_2306211231_be.models.AccommodationReview;
 
 import lombok.RequiredArgsConstructor;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.util.*;
 
@@ -63,7 +65,8 @@ public class AccommodationBookingRestController {
                 var ownerId = user.getId();
                 var entities = bookingService.getAllBookings();
                 for (var b : entities) {
-                    if (b.getRoom() == null || b.getRoom().getRoomType() == null || b.getRoom().getRoomType().getProperty() == null)
+                    if (b.getRoom() == null || b.getRoom().getRoomType() == null
+                            || b.getRoom().getRoomType().getProperty() == null)
                         continue;
                     var prop = b.getRoom().getRoomType().getProperty();
                     if (prop.getOwnerId() != null && prop.getOwnerId().equals(ownerId)) {
@@ -128,11 +131,13 @@ public class AccommodationBookingRestController {
 
             var reviews = reviewService.findByCustomerId(custId);
             var dtos = reviews.stream().map(AccommodationReviewMapper::toDTO).toList();
-            return ResponseUtil.success(dtos, "[GET] Reviews for customer retrieved", HttpStatus.OK).toBuilder().build();
+            return ResponseUtil.success(dtos, "[GET] Reviews for customer retrieved", HttpStatus.OK).toBuilder()
+                    .build();
         } catch (IllegalArgumentException ex) {
             return ResponseUtil.error(ex.getMessage(), HttpStatus.BAD_REQUEST);
         } catch (Exception ex) {
-            return ResponseUtil.error("An error occurred while fetching reviews: " + ex.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
+            return ResponseUtil.error("An error occurred while fetching reviews: " + ex.getMessage(),
+                    HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -142,29 +147,34 @@ public class AccommodationBookingRestController {
             var auth = SecurityContextHolder.getContext().getAuthentication();
             String caller = (auth != null) ? auth.getName() : null;
             boolean isOwner = auth != null && auth.getAuthorities().stream()
-                    .anyMatch(a -> a.getAuthority().equals("ACCOMMODATION_OWNER") || a.getAuthority().equals("ROLE_ACCOMMODATION_OWNER"));
+                    .anyMatch(a -> a.getAuthority().equals("ACCOMMODATION_OWNER")
+                            || a.getAuthority().equals("ROLE_ACCOMMODATION_OWNER"));
             boolean isSuper = auth != null && auth.getAuthorities().stream()
                     .anyMatch(a -> a.getAuthority().equals("SUPERADMIN") || a.getAuthority().equals("ROLE_SUPERADMIN"));
             boolean isCustomer = auth != null && auth.getAuthorities().stream()
                     .anyMatch(a -> a.getAuthority().equals("CUSTOMER") || a.getAuthority().equals("ROLE_CUSTOMER"));
 
             var revOpt = reviewService.findById(id);
-            if (revOpt.isEmpty()) return ResponseUtil.error("Review not found", HttpStatus.NOT_FOUND);
+            if (revOpt.isEmpty())
+                return ResponseUtil.error("Review not found", HttpStatus.NOT_FOUND);
             var rev = revOpt.get();
 
             if (isOwner && caller != null && !isSuper) {
                 // verify owner owns the reviewed property, superadmin can bypass
                 var callerAgg = authRestService.findAggregateByUsername(caller);
-                String ownerId = rev.getProperty() == null ? null : rev.getProperty().getOwnerId() == null ? null
-                        : rev.getProperty().getOwnerId().toString();
-                if (callerAgg == null || ownerId == null || !ownerId.equals(callerAgg.getId() == null ? null : callerAgg.getId().toString())) {
+                String ownerId = rev.getProperty() == null ? null
+                        : rev.getProperty().getOwnerId() == null ? null
+                                : rev.getProperty().getOwnerId().toString();
+                if (callerAgg == null || ownerId == null
+                        || !ownerId.equals(callerAgg.getId() == null ? null : callerAgg.getId().toString())) {
                     return ResponseUtil.error("Forbidden", HttpStatus.FORBIDDEN);
                 }
             }
             if (isCustomer && caller != null && !isSuper) {
                 // verify customer is the reviewer, superadmin can bypass
                 var callerAgg = authRestService.findAggregateByUsername(caller);
-                if (callerAgg == null || callerAgg.getId() == null || !callerAgg.getId().equals(rev.getCustomer().getId())) {
+                if (callerAgg == null || callerAgg.getId() == null
+                        || !callerAgg.getId().equals(rev.getCustomer().getId())) {
                     return ResponseUtil.error("Forbidden", HttpStatus.FORBIDDEN);
                 }
             }
@@ -172,7 +182,8 @@ public class AccommodationBookingRestController {
             var dto = AccommodationReviewMapper.toDTO(rev);
             return ResponseUtil.success(dto, "[GET] Review detail retrieved", HttpStatus.OK).toBuilder().build();
         } catch (Exception ex) {
-            return ResponseUtil.error("An error occurred while fetching review: " + ex.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
+            return ResponseUtil.error("An error occurred while fetching review: " + ex.getMessage(),
+                    HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -181,19 +192,23 @@ public class AccommodationBookingRestController {
             @Validated @RequestBody BaseRequestDto<AccommodationReviewDTO> request) {
         try {
             var auth = SecurityContextHolder.getContext().getAuthentication();
-            if (auth == null) return ResponseUtil.error("Unauthorized", HttpStatus.UNAUTHORIZED);
+            if (auth == null)
+                return ResponseUtil.error("Unauthorized", HttpStatus.UNAUTHORIZED);
             boolean isCustomer = auth.getAuthorities().stream()
                     .anyMatch(a -> a.getAuthority().equals("CUSTOMER") || a.getAuthority().equals("ROLE_CUSTOMER"));
-            if (!isCustomer) return ResponseUtil.error("Forbidden", HttpStatus.FORBIDDEN);
+            if (!isCustomer)
+                return ResponseUtil.error("Forbidden", HttpStatus.FORBIDDEN);
 
             var payload = request.getData();
             if (payload == null || payload.getBookingId() == null || payload.getBookingId().isBlank()) {
                 return ResponseUtil.error("bookingId is required", HttpStatus.BAD_REQUEST);
             }
 
-            // Validate booking belongs to caller and is completed (or payment confirmed and checkout passed)
+            // Validate booking belongs to caller and is completed (or payment confirmed and
+            // checkout passed)
             var maybeBooking = bookingService.getBookingById(payload.getBookingId());
-            if (maybeBooking.isEmpty()) return ResponseUtil.error("Booking not found", HttpStatus.NOT_FOUND);
+            if (maybeBooking.isEmpty())
+                return ResponseUtil.error("Booking not found", HttpStatus.NOT_FOUND);
             var booking = maybeBooking.get();
 
             var callerAgg = authRestService.findAggregateByUsername(auth.getName());
@@ -204,9 +219,11 @@ public class AccommodationBookingRestController {
             // Booking must be payment confirmed and checkout passed OR status done
             java.time.LocalDateTime checkout = booking.getCheckOutDate();
             int st = booking.getStatus() == null ? 0 : booking.getStatus();
-            java.time.LocalDateTime now = java.time.ZonedDateTime.now(java.time.ZoneId.of("Asia/Jakarta")).toLocalDateTime();
+            java.time.LocalDateTime now = java.time.ZonedDateTime.now(java.time.ZoneId.of("Asia/Jakarta"))
+                    .toLocalDateTime();
             boolean allowed = (st == 4) || (st == 1 && checkout != null && !now.isBefore(checkout));
-            if (!allowed) return ResponseUtil.error("Booking is not eligible for review yet", HttpStatus.BAD_REQUEST);
+            if (!allowed)
+                return ResponseUtil.error("Booking is not eligible for review yet", HttpStatus.BAD_REQUEST);
 
             // Prevent duplicate review for same booking
             if (reviewService.existsForBooking(booking.getBookingId())) {
@@ -214,8 +231,7 @@ public class AccommodationBookingRestController {
             }
 
             // Build review entity
-            AccommodationReview review =
-                    AccommodationReview.builder()
+            AccommodationReview review = AccommodationReview.builder()
                     .reviewId(UUID.randomUUID().toString())
                     .booking(booking)
                     .property(booking.getRoom().getRoomType().getProperty())
@@ -234,7 +250,8 @@ public class AccommodationBookingRestController {
         } catch (IllegalArgumentException ex) {
             return ResponseUtil.error(ex.getMessage(), HttpStatus.BAD_REQUEST);
         } catch (Exception ex) {
-            return ResponseUtil.error("An error occurred while creating review: " + ex.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
+            return ResponseUtil.error("An error occurred while creating review: " + ex.getMessage(),
+                    HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -242,7 +259,8 @@ public class AccommodationBookingRestController {
     public ResponseEntity<BaseResponseDto<Map<String, Object>>> processCheckInToday() {
         try {
             var auth = SecurityContextHolder.getContext().getAuthentication();
-            if (auth == null) return ResponseUtil.error("Unauthorized", HttpStatus.UNAUTHORIZED);
+            if (auth == null)
+                return ResponseUtil.error("Unauthorized", HttpStatus.UNAUTHORIZED);
 
             boolean isOwner = auth.getAuthorities().stream()
                     .anyMatch(a -> a.getAuthority().equals("ACCOMMODATION_OWNER")
@@ -281,7 +299,8 @@ public class AccommodationBookingRestController {
     public ResponseEntity<BaseResponseDto<Map<String, Object>>> processCheckOutToday() {
         try {
             var auth = SecurityContextHolder.getContext().getAuthentication();
-            if (auth == null) return ResponseUtil.error("Unauthorized", HttpStatus.UNAUTHORIZED);
+            if (auth == null)
+                return ResponseUtil.error("Unauthorized", HttpStatus.UNAUTHORIZED);
 
             boolean isOwner = auth.getAuthorities().stream()
                     .anyMatch(a -> a.getAuthority().equals("ACCOMMODATION_OWNER")
@@ -330,33 +349,40 @@ public class AccommodationBookingRestController {
 
             if (isSuper) {
                 AccommodationBookingDto dto = bookingService.getBookingDtoById(id);
-                return ResponseUtil.success(dto, "[GET] Booking retrieved successfully for ID: " + id, HttpStatus.OK).toBuilder().build();
+                return ResponseUtil.success(dto, "[GET] Booking retrieved successfully for ID: " + id, HttpStatus.OK)
+                        .toBuilder().build();
             }
 
             // Need to check ownership / customer identity
             var entityOpt = bookingService.getBookingById(id);
-            if (entityOpt.isEmpty()) throw new NoSuchElementException("Booking not found with ID: " + id);
+            if (entityOpt.isEmpty())
+                throw new NoSuchElementException("Booking not found with ID: " + id);
             var entity = entityOpt.get();
 
             if (isOwner && caller != null) {
                 var user = authRestService.findAggregateByUsername(caller);
-                if (user == null) return ResponseUtil.error("Owner not found", HttpStatus.NOT_FOUND);
-                var prop = entity.getRoom() == null || entity.getRoom().getRoomType() == null ? null : entity.getRoom().getRoomType().getProperty();
+                if (user == null)
+                    return ResponseUtil.error("Owner not found", HttpStatus.NOT_FOUND);
+                var prop = entity.getRoom() == null || entity.getRoom().getRoomType() == null ? null
+                        : entity.getRoom().getRoomType().getProperty();
                 if (prop == null || prop.getOwnerId() == null || !prop.getOwnerId().equals(user.getId())) {
                     return ResponseUtil.error("Forbidden", HttpStatus.FORBIDDEN);
                 }
                 AccommodationBookingDto dto = AccommodationBookingMapper.toDto(entity);
-                return ResponseUtil.success(dto, "[GET] Booking retrieved successfully for ID: " + id, HttpStatus.OK).toBuilder().build();
+                return ResponseUtil.success(dto, "[GET] Booking retrieved successfully for ID: " + id, HttpStatus.OK)
+                        .toBuilder().build();
             }
 
             if (isCustomer && caller != null) {
                 var user = authRestService.findAggregateByUsername(caller);
-                if (user == null) return ResponseUtil.error("Customer not found", HttpStatus.NOT_FOUND);
+                if (user == null)
+                    return ResponseUtil.error("Customer not found", HttpStatus.NOT_FOUND);
                 if (entity.getCustomerId() == null || !entity.getCustomerId().equals(user.getId())) {
                     return ResponseUtil.error("Forbidden", HttpStatus.FORBIDDEN);
                 }
                 AccommodationBookingDto dto = AccommodationBookingMapper.toDto(entity);
-                return ResponseUtil.success(dto, "[GET] Booking retrieved successfully for ID: " + id, HttpStatus.OK).toBuilder().build();
+                return ResponseUtil.success(dto, "[GET] Booking retrieved successfully for ID: " + id, HttpStatus.OK)
+                        .toBuilder().build();
             }
 
             return ResponseUtil.error("Forbidden", HttpStatus.FORBIDDEN);
@@ -376,6 +402,18 @@ public class AccommodationBookingRestController {
                     dto,
                     "[POST] Booking created successfully",
                     HttpStatus.CREATED).toBuilder().build();
+        } catch (IllegalArgumentException ex) {
+            // FIX: Error validasi (overlap, kapasitas, dll) dikembalikan sebagai 400 Bad
+            // Request
+            return ResponseUtil.error(
+                    ex.getMessage(),
+                    HttpStatus.BAD_REQUEST);
+        } catch (DataIntegrityViolationException ex) {
+            // FIX: Tangkap error duplicate ID (pkey) dan return 409 Conflict
+            // Ini mencegah error 500 saat load test tinggi
+            return ResponseUtil.error(
+                    "System busy (ID Collision), please retry transaction.",
+                    HttpStatus.CONFLICT);
         } catch (Exception ex) {
             return ResponseUtil.error(
                     "An error occurred while creating booking: " + ex.getMessage(),
@@ -393,6 +431,18 @@ public class AccommodationBookingRestController {
                     dto,
                     "[POST] Booking created successfully with Room ID: " + idRoom,
                     HttpStatus.CREATED).toBuilder().build();
+        } catch (IllegalArgumentException ex) {
+            // FIX: Error validasi (overlap, kapasitas, dll) dikembalikan sebagai 400 Bad
+            // Request
+            return ResponseUtil.error(
+                    ex.getMessage(),
+                    HttpStatus.BAD_REQUEST);
+        } catch (DataIntegrityViolationException ex) {
+            // FIX: Tangkap error duplicate ID (pkey) dan return 409 Conflict
+            // Ini mencegah error 500 saat load test tinggi
+            return ResponseUtil.error(
+                    "System busy (ID Collision), please retry transaction.",
+                    HttpStatus.CONFLICT);
         } catch (Exception ex) {
             return ResponseUtil.error(
                     "An error occurred while creating booking: " + ex.getMessage(),
@@ -473,16 +523,19 @@ public class AccommodationBookingRestController {
         try {
             var auth = SecurityContextHolder.getContext().getAuthentication();
             boolean isOwner = auth != null && auth.getAuthorities().stream()
-                    .anyMatch(a -> a.getAuthority().equals("ACCOMMODATION_OWNER") || a.getAuthority().equals("ROLE_ACCOMMODATION_OWNER"));
+                    .anyMatch(a -> a.getAuthority().equals("ACCOMMODATION_OWNER")
+                            || a.getAuthority().equals("ROLE_ACCOMMODATION_OWNER"));
             boolean isSuper = auth != null && auth.getAuthorities().stream()
                     .anyMatch(a -> a.getAuthority().equals("SUPERADMIN") || a.getAuthority().equals("ROLE_SUPERADMIN"));
 
             UUID ownerUuid = null;
             if (isOwner && !isSuper) {
                 String caller = auth != null ? auth.getName() : null;
-                if (caller == null) return ResponseUtil.error("Unauthorized", org.springframework.http.HttpStatus.UNAUTHORIZED);
+                if (caller == null)
+                    return ResponseUtil.error("Unauthorized", org.springframework.http.HttpStatus.UNAUTHORIZED);
                 var userAgg = authRestService.findAggregateByUsername(caller);
-                if (userAgg == null || userAgg.getId() == null) return ResponseUtil.error("Owner not found", org.springframework.http.HttpStatus.NOT_FOUND);
+                if (userAgg == null || userAgg.getId() == null)
+                    return ResponseUtil.error("Owner not found", org.springframework.http.HttpStatus.NOT_FOUND);
                 try {
                     ownerUuid = userAgg.getId();
                 } catch (Exception e) {

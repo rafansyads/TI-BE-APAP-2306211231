@@ -111,8 +111,16 @@ public class JwtUtils {
  
     public String getCurrentUsername() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication != null && authentication.getPrincipal() instanceof org.springframework.security.core.userdetails.User) {
-            return ((org.springframework.security.core.userdetails.User) authentication.getPrincipal()).getUsername();
+        if (authentication != null) {
+            Object principal = authentication.getPrincipal();
+            if (principal instanceof org.springframework.security.core.userdetails.User) {
+                return ((org.springframework.security.core.userdetails.User) principal).getUsername();
+            }
+            if (principal instanceof String) {
+                return (String) principal;
+            }
+            // fallback to authentication name
+            return authentication.getName();
         }
         return null;
     }

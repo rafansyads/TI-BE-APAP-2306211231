@@ -66,9 +66,10 @@ tasks.named('jacocoTestReport', JacocoReport).configure {
 			'**/Accommodation2306211231BeApplication*', // bootstrap class
 			'**/config/**',
 			'**/repository/**',
-			'**/service/**',
-			'**/restcontroller/**',
-			'**/restservice/**',
+			// Keep service and controller packages included so coverage shows them
+			//'**/service/**',
+			//'**/restcontroller/**',
+			//'**/restservice/**',
 			'**/models/**', // keep models excluded
 			'**/restdto/**' // keep DTOs excluded
 		]) })
@@ -95,9 +96,10 @@ tasks.named('jacocoTestCoverageVerification', JacocoCoverageVerification).config
 			'**/Accommodation2306211231BeApplication*',
 			'**/config/**',
 			'**/repository/**',
-			'**/service/**',
-			'**/restcontroller/**',
-			'**/restservice/**',
+			// Include service and controller packages in coverage checks
+			//'**/service/**',
+			//'**/restcontroller/**',
+			//'**/restservice/**',
 			'**/models/**',
 			'**/restdto/**'
 		]) })
